@@ -42,11 +42,20 @@ export class Game {
 
   spawnChunkEntities(chunk) {
     if (!chunk) return;
+    // chunk spawns are authored in chunk-local pixels; shift them into world
+    // space or every enemy and orb collapses onto the first screen.
+    const ox = chunk.baseX;
     for (const s of chunk.spawns) {
-      const spec = { ...s, chunkIndex: chunk.index };
-      if (s.type === 'walker') this.enemies.push(new Walker(spec));
-      else if (s.type === 'flyer') this.enemies.push(new Flyer(spec));
-      else if (s.type === 'orb') this.orbs.push(new Orb(spec));
+      const spec = { ...s, x: s.x + ox, chunkIndex: chunk.index };
+      if (s.type === 'walker') {
+        spec.minX = s.minX + ox;
+        spec.maxX = s.maxX + ox;
+        this.enemies.push(new Walker(spec));
+      } else if (s.type === 'flyer') {
+        this.enemies.push(new Flyer(spec));
+      } else if (s.type === 'orb') {
+        this.orbs.push(new Orb(spec));
+      }
     }
   }
 
