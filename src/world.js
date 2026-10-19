@@ -62,12 +62,13 @@ export class World {
 
     const decor = [];
     const spawns = [];
-    const startPad = i === 0 ? 7 : 1;
+    const gaps = [];
+    const startPad = i === 0 ? 7 : 2;
     let x = startPad;
 
     while (x < CHUNK_W - 4) {
       const gapStart = x;
-      const gap = 1 + Math.floor(rng() * 3);
+      const gap = 2 + Math.floor(rng() * 2); // never narrower than two tiles
       x += gap;
       if (x >= CHUNK_W - 4) break;
 
@@ -95,18 +96,37 @@ export class World {
       const bseed = rng();
       decor.push({ x0: x, x1: x + w - 1, top, h, w, heights, steps, seed: bseed });
 
-      // launch pad inside the canyon before tall blocks
-      if (h >= 4 && gap >= 2 && rng() < 0.55) {
+      // A two-tile balcony two blocks above the street is the guaranteed
+      // first foothold for any building taller than a single jump.
+      let hasBalcony = false;
+      let balconyX = -1;
+      if (h >= 4 && gap >= 2) {
+        const bx = x - 2;
+        const by = groundY - 3;
+        if (bx >= 0 && map[by * CHUNK_W + bx] === EMPTY && map[by * CHUNK_W + bx + 1] === EMPTY) {
+          map[by * CHUNK_W + bx] = LEDGE;
+          map[by * CHUNK_W + bx + 1] = LEDGE;
+          decor.push({
+            x0: bx, x1: bx + 1, top: by, h: 1, w: 2,
+            heights: [1, 1], steps: 0, seed: rng(), ledge: true,
+          });
+          hasBalcony = true;
+          balconyX = bx;
+        }
+      }
+
+      // launch pads only where the sky above the pad stays clear
+      if (!hasBalcony && h >= 4 && rng() < 0.5) {
         const px = gapStart + Math.floor(gap / 2);
-        if (map[(groundY - 1) * CHUNK_W + px] === EMPTY) {
+        if (map[(groundY - 1) * CHUNK_W + px] === EMPTY && map[(groundY - 2) * CHUNK_W + px] === EMPTY) {
           map[(groundY - 1) * CHUNK_W + px] = PAD;
         }
       }
 
-      // street hazard in the gap before this building
-      if (!calm && gap >= 2 && rng() < 0.5) {
+      // street hazard in gaps that are actually walkable
+      if (!hasBalcony && !calm && rng() < 0.5) {
         const hx = gapStart + Math.floor(gap / 2);
-        if (map[(groundY - 1) * CHUNK_W + hx] === EMPTY) {
+        if (map[(groundY - 1) * CHUNK_W + hx] === EMPTY && map[(groundY - 2) * CHUNK_W + hx] === EMPTY) {
           map[(groundY - 1) * CHUNK_W + hx] = HAZARD;
         }
       }
@@ -123,36 +143,28 @@ export class World {
         });
       }
 
-      // rooftop orbs above the crown
+      // rooftop orbs sit above the crown, never inside the block
       if (rng() < 0.4) {
         spawns.push({ type: 'orb', x: (x + steps + 0.6) * TILE, y: (top - 1.15) * TILE });
         spawns.push({ type: 'orb', x: (x + w - steps - 0.6) * TILE, y: (top - 1.15) * TILE });
       }
 
+      gaps.push({ start: gapStart, width: gap, balconyX });
       x += w;
     }
 
-    // stepping platform above the canyon keeps tall rooftops reachable
-    for (let tx = 1; tx < CHUNK_W - 3; tx++) {
-      if (rng() >= 0.09) continue;
-      const ly = groundY - 3;
-      let empty = true;
-      for (let d = 0; d < 2; d++) {
-        if (map[ly * CHUNK_W + tx + d] !== EMPTY) empty = false;
-      }
-      if (!empty) continue;
-      for (let d = 0; d < 2; d++) map[ly * CHUNK_W + tx + d] = LEDGE;
-      decor.push({ x0: tx, x1: tx + 1, top: ly, h: 1, w: 2, heights: [1, 1], steps: 0, seed: rng(), ledge: true });
-      tx += 2;
-    }
-
-    // canyon orbs
-    for (let tx = 1; tx < CHUNK_W - 2; tx += 1) {
-      if (map[(groundY - 1) * CHUNK_W + tx] !== EMPTY) continue;
-      if (map[(groundY - 3) * CHUNK_W + tx] === SOLID) continue;
-      if (rng() < 0.05) {
-        spawns.push({ type: 'orb', x: (tx + 0.5) * TILE, y: (groundY - 2.2) * TILE });
-      }
+    // canyon orbs float in open air above wide gaps, clear of every wall.
+    // Narrow slots and tiles occupied by balconies are skipped entirely.
+    for (const g of gaps) {
+      if (g.width < 2) continue;
+      if (rng() >= 0.6) continue;
+      const cy = (groundY - 3.6) * TILE;
+      const cx = (g.start + g.width / 2) * TILE;
+      const tx = Math.floor(cx / TILE);
+      const ty = Math.floor(cy / TILE);
+      if (map[ty * CHUNK_W + tx] !== EMPTY) continue;
+      if (g.balconyX >= 0 && tx >= g.balconyX && tx <= g.balconyX + 1) continue;
+      spawns.push({ type: 'orb', x: cx, y: cy });
     }
 
     // drones patrolling the air
