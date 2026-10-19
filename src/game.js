@@ -5,22 +5,24 @@ import { Player } from './player.js';
 import { Walker, Flyer, Orb } from './entities.js';
 
 export class Game {
-  constructor(renderer, audio, seedInt, seedLabel) {
+  constructor(renderer, audio, seedInt, seedLabel, diff) {
     this.renderer = renderer;
     this.audio = audio;
+    this.diff = diff;
     this.seedInt = seedInt >>> 0;
     this.seedLabel = seedLabel;
     this.onOver = null;
+    this.onMilestone = null;
     this.reset();
   }
 
   reset() {
-    this.world = new World(this.seedInt);
+    this.world = new World(this.seedInt, this.diff);
     this.world.ensure(0);
     const c0 = this.world.chunks.get(0);
     const gy = c0 ? c0.groundY : 15;
     this.startX = 3 * TILE;
-    this.player = new Player(this.startX, gy * TILE - PHYS.h - 2);
+    this.player = new Player(this.startX, gy * TILE - PHYS.h - 2, this.diff.hp);
     this.enemies = [];
     this.orbs = [];
     this.particles = [];
@@ -31,6 +33,8 @@ export class Game {
     this.distance = 0;
     this.combo = 0;
     this.comboT = 0;
+    this.nextMilestone = 250;
+    this.milestone = 0;
     this.state = 'title';
     this.spawnChunkEntities(c0);
     this.syncCamera(true);
@@ -89,6 +93,11 @@ export class Game {
     this.updateCamera(dt);
 
     this.distance = Math.max(this.distance, Math.floor((p.x - this.startX) / 16));
+    if (this.distance >= this.nextMilestone) {
+      this.milestone = this.nextMilestone;
+      this.nextMilestone += 250;
+      if (this.onMilestone) this.onMilestone(this.milestone);
+    }
     this.comboT = Math.max(0, this.comboT - dt);
     if (this.comboT === 0) this.combo = 0;
     this.shake = Math.max(0, this.shake - dt * 2.4);
@@ -112,7 +121,7 @@ export class Game {
         o.alive = false;
         this.combo += 1;
         this.comboT = 2.4;
-        const gain = 10 * Math.min(this.combo, 5);
+        const gain = Math.round(10 * Math.min(this.combo, 5) * this.diff.scoreMul);
         this.score += gain;
         this.burst(o.x, o.y, 12, 'rgba(143,227,255,0.95)', 180);
         this.audio.pickup();
@@ -134,7 +143,7 @@ export class Game {
         e.alive = false;
         e.deadT = 0;
         p.vy = -640;
-        this.score += 50;
+        this.score += Math.round(50 * this.diff.scoreMul);
         this.combo += 1;
         this.comboT = 2.4;
         this.burst(b.x + b.w / 2, b.y + b.h / 2, 20, 'rgba(244,114,182,0.95)', 260);

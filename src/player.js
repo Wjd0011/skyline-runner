@@ -2,7 +2,7 @@ import { TILE, PHYS, UI } from './config.js';
 import { clamp } from './rng.js';
 
 export class Player {
-  constructor(x, y) {
+  constructor(x, y, hp = UI.maxHp) {
     this.x = x;
     this.y = y;
     this.w = PHYS.w;
@@ -13,7 +13,8 @@ export class Player {
     this.coyote = 0;
     this.jumpBuf = 0;
     this.facing = 1;
-    this.hp = UI.maxHp;
+    this.maxHp = hp;
+    this.hp = hp;
     this.iframes = 0;
     this.alive = true;
     this.animT = 0;

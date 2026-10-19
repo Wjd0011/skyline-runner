@@ -1,5 +1,6 @@
 import { TILE, CHUNK_W, CHUNK_H } from './config.js';
-import { mulberry32, clamp } from './rng.js';
+import { mulberry32, clamp, lerp } from './rng.js';
+import { DIFFICULTIES } from './config.js';
 
 export const EMPTY = 0;
 export const SOLID = 1;
@@ -9,8 +10,9 @@ export const LEDGE = 3;
 const CHUNK_PX = CHUNK_W * TILE;
 
 export class World {
-  constructor(seed) {
+  constructor(seed, diff = DIFFICULTIES.normal) {
     this.seed = seed >>> 0;
+    this.diff = diff || DIFFICULTIES.normal;
     this.chunks = new Map();
     this.newChunks = [];
     this.removedChunks = [];
@@ -39,6 +41,16 @@ export class World {
 
   generate(i) {
     const rng = mulberry32((this.seed ^ Math.imul(i + 1013, 2654435761)) >>> 0);
+
+    // spawn pressure is a function of distance, not of the chunk alone:
+    // the first two chunks stay empty, then pressure ramps with the run.
+    const meters = (i * CHUNK_PX) / 16;
+    const [rampA, rampB] = this.diff.ramp;
+    const t = clamp((meters - rampA) / Math.max(1, rampB - rampA), 0, 1);
+    const walkerChance = lerp(this.diff.walker[0], this.diff.walker[1], t);
+    const flyerChance = lerp(this.diff.flyer[0], this.diff.flyer[1], t);
+    const speedMul = lerp(this.diff.speed[0], this.diff.speed[1], t);
+    const calm = i <= 1;
     const map = new Uint8Array(CHUNK_W * CHUNK_H);
     const phase = ((this.seed % 997) / 997) * Math.PI * 2;
     const groundY = clamp(15 + Math.round(Math.sin(i * 0.53 + phase) * 1.6), 12, 17);
@@ -87,7 +99,7 @@ export class World {
       }
 
       // street hazard in the gap before this building
-      if (gap >= 2 && rng() < 0.5) {
+      if (!calm && gap >= 2 && rng() < 0.5) {
         const hx = gapStart + Math.floor(gap / 2);
         if (map[(groundY - 1) * CHUNK_W + hx] === EMPTY) {
           map[(groundY - 1) * CHUNK_W + hx] = HAZARD;
@@ -95,13 +107,14 @@ export class World {
       }
 
       // rooftop enemies
-      if (w >= 3 && rng() < 0.52) {
+      if (!calm && w >= 3 && rng() < walkerChance) {
         spawns.push({
           type: 'walker',
           x: (x + w / 2) * TILE,
           y: top * TILE,
           minX: x * TILE + 8,
           maxX: (x + w) * TILE - 8,
+          speedMul,
         });
       }
 
@@ -124,7 +137,7 @@ export class World {
     }
 
     // drones patrolling the air
-    if (rng() < 0.75) {
+    if (!calm && rng() < flyerChance) {
       const fx = (2 + Math.floor(rng() * (CHUNK_W - 4))) * TILE;
       spawns.push({
         type: 'flyer',
@@ -132,6 +145,7 @@ export class World {
         y: (groundY - 3.4 - rng() * 1.8) * TILE,
         amp: 30 + rng() * 34,
         speed: 0.8 + rng() * 0.7,
+        speedMul,
       });
     }
 

@@ -11,6 +11,7 @@ export const PHYS = {
   airAcc: 2000,
   maxSpeed: 430,
   friction: 2600,
+  airDrag: 260,
   coyote: 0.1,
   buffer: 0.12,
   jumpCut: 2.2,
@@ -41,5 +42,47 @@ export const C = {
 export const UI = {
   maxHp: 3,
 };
+
+// Difficulty presets.
+// walker / flyer: [chance at ramp start, chance at ramp end]
+// speed: [enemy speed multiplier at start, at the end]
+// ramp: [start metres, end metres] — spawn pressure grows along the run
+export const DIFFICULTIES = {
+  easy: {
+    id: 'easy',
+    label: '简单',
+    labelEn: 'EASY',
+    hp: 4,
+    walker: [0.08, 0.40],
+    flyer: [0.08, 0.48],
+    speed: [0.82, 0.98],
+    ramp: [90, 720],
+    scoreMul: 0.8,
+  },
+  normal: {
+    id: 'normal',
+    label: '中等',
+    labelEn: 'NORMAL',
+    hp: 3,
+    walker: [0.16, 0.60],
+    flyer: [0.16, 0.78],
+    speed: [0.95, 1.10],
+    ramp: [70, 600],
+    scoreMul: 1,
+  },
+  hard: {
+    id: 'hard',
+    label: '困难',
+    labelEn: 'HARD',
+    hp: 2,
+    walker: [0.26, 0.78],
+    flyer: [0.26, 0.95],
+    speed: [1.06, 1.26],
+    ramp: [40, 500],
+    scoreMul: 1.3,
+  },
+};
+
+export const DEFAULT_DIFFICULTY = 'normal';
 
 export const SEED_GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

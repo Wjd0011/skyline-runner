@@ -15,6 +15,8 @@ A neon skyline platformer where every building is procedurally generated from a 
 
 - **Procedural architecture** — buildings, canyons, stepping ledges and rooftop props are generated chunk by chunk from a seed. Same seed, same skyline; share it via `?seed=NEON42`.
 - **AI enemies that react** — patrol walkers chase you across a roof, drones drift until you enter their range and then dive. Both can be stomped; both can end your run.
+- **Distance-driven pressure** — the first 96 m are deliberately calm, then enemy density and speed ramp with distance instead of hitting you with a wall of robots on spawn.
+- **Three difficulty modes** — Easy / Normal / Hard change hearts, spawn curve, enemy speed and score multiplier. High scores are tracked per mode.
 - **Hand-tuned movement** — coyote time, jump buffering, variable jump height, air control and a 120 Hz fixed-step simulation. The jump feels right before anything else.
 - **Zero dependencies** — no engine, no bundler, no build step. Canvas 2D and ES modules, served straight from GitHub Pages.
 
@@ -26,9 +28,20 @@ A neon skyline platformer where every building is procedurally generated from a 
 | Jump | `Space` / `W` / `↑` | ▲ |
 | Pause | `Esc` | — |
 | Restart | `Enter` | — |
+| Difficulty | `1` / `2` / `3` or the buttons on the title screen | same |
 | New seed | click the seed on the title screen | same |
 
 Hold jump longer to jump higher. You have three hearts — contact costs one and grants brief invulnerability.
+
+## Difficulty
+
+| | Hearts | Spawn curve (enemies / chunk) | Enemy speed | Score |
+| --- | --- | --- | --- | --- |
+| **Easy** | 4 | 0 → 1.3 | 0.82× → 0.98× | ×0.8 |
+| **Normal** | 3 | 0 → 2.2 | 0.95× → 1.10× | ×1.0 |
+| **Hard** | 2 | 0 → 2.9 | 1.06× → 1.26× | ×1.3 |
+
+The first two chunks (96 m) never spawn enemies or street hazards, so every run opens with a clean runway. After that, spawn chance is lerped between the difficulty's start and end values across its ramp window (for example Normal ramps from 70 m to 600 m).
 
 ## How it works
 

@@ -17,6 +17,7 @@
   <div class="hud-block hud-left">
     <div class="hearts" id="hearts"></div>
   </div>
+  <div class="hud-diff" id="hud-diff">NORMAL</div>
   <div class="hud-block hud-right">
     <div class="stat">
       <span class="label">SCORE</span>
@@ -36,6 +37,11 @@
     <div class="kicker">PROCEDURAL SKYLINE PLATFORMER</div>
     <h1>SKYLINE<br /><span>RUNNER</span></h1>
     <p class="sub">天际行者 · 每一栋建筑都由种子生成</p>
+    <div class="diffs" id="diffs" role="group" aria-label="难度选择">
+      <button class="diff" data-diff="easy">简单<small>EASY</small></button>
+      <button class="diff active" data-diff="normal">中等<small>NORMAL</small></button>
+      <button class="diff" data-diff="hard">困难<small>HARD</small></button>
+    </div>
     <button class="btn primary" id="btn-start">开始奔跑 <kbd>ENTER</kbd></button>
     <div class="controls">
       <span><kbd>A</kbd><kbd>D</kbd> 移动</span>
@@ -65,7 +71,7 @@
       <div class="result"><span class="label">BEST</span><b id="final-best">0</b></div>
     </div>
     <button class="btn primary" id="btn-retry">再来一次 <kbd>ENTER</kbd></button>
-    <p class="seed-line">SEED <b id="final-seed">—</b></p>
+    <p class="seed-line">SEED <b id="final-seed">—</b> · <b id="final-diff">NORMAL</b></p>
   </section>
 </div>
 

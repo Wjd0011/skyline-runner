@@ -11,8 +11,9 @@ export class Walker {
     this.minX = spec.minX;
     this.maxX = spec.maxX;
     this.dir = -1;
-    this.speed = 54;
-    this.chaseSpeed = 112;
+    this.speedMul = spec.speedMul || 1;
+    this.speed = 54 * this.speedMul;
+    this.chaseSpeed = 112 * this.speedMul;
     this.t = Math.random() * 6;
     this.chasing = false;
     this.alive = true;
@@ -75,6 +76,7 @@ export class Flyer {
     this.amp = spec.amp || 40;
     this.speed = spec.speed || 1;
     this.t = Math.random() * 8;
+    this.speedMul = spec.speedMul || 1;
     this.alive = true;
     this.deadT = 0;
     this.attack = 0;
@@ -102,7 +104,7 @@ export class Flyer {
     const idleY = this.baseY + Math.sin(this.t * this.speed * 1.9) * this.amp;
 
     if (this.attack > 0.02) {
-      const k = Math.min(1, dt * 1.9 * this.attack);
+      const k = Math.min(1, dt * 1.9 * this.attack * this.speedMul);
       this.x += (pcx - this.x) * k;
       this.y += (pcy - 10 - this.y) * k;
     } else {

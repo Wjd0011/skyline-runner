@@ -2,7 +2,7 @@ import { Renderer } from './render.js';
 import { Game } from './game.js';
 import { Audio } from './audio.js';
 import { seedToInt, randomSeed } from './rng.js';
-import { UI } from './config.js';
+import { DIFFICULTIES, DEFAULT_DIFFICULTY } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -14,15 +14,28 @@ const params = new URLSearchParams(location.search);
 let seedLabel = (params.get('seed') || randomSeed()).toUpperCase().slice(0, 8);
 let seedInt = seedToInt(seedLabel);
 
-const BEST_KEY = 'skyline-runner.best.v1';
-let best = Number(localStorage.getItem(BEST_KEY) || 0);
-if (!Number.isFinite(best)) best = 0;
+const DIFF_KEY = 'skyline-runner.diff.v1';
+const BEST_KEY = 'skyline-runner.best.v2';
+
+let difficulty =
+  (params.get('diff') || localStorage.getItem(DIFF_KEY) || DEFAULT_DIFFICULTY).toLowerCase();
+if (!DIFFICULTIES[difficulty]) difficulty = DEFAULT_DIFFICULTY;
+
+function bestStorageKey(d) {
+  return `${BEST_KEY}.${d}`;
+}
+
+function readBest(d) {
+  const v = Number(localStorage.getItem(bestStorageKey(d)) || 0);
+  return Number.isFinite(v) ? v : 0;
+}
 
 let game = makeGame();
 
 function makeGame() {
-  const g = new Game(renderer, audio, seedInt, seedLabel);
+  const g = new Game(renderer, audio, seedInt, seedLabel, DIFFICULTIES[difficulty]);
   g.onOver = onGameOver;
+  g.onMilestone = (meters) => toast(`${meters} m`, 800);
   return g;
 }
 
@@ -46,9 +59,12 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
     togglePause();
   } else if (e.key === 'Enter') {
-    if (game.state === 'title') startRun();
-    else if (game.state === 'over') startRun();
+    if (game.state === 'title' || game.state === 'over') startRun();
     else if (game.state === 'paused') resumeRun();
+  } else if (e.key === '1' || e.key === '2' || e.key === '3') {
+    if (game.state === 'title') {
+      setDifficulty(e.key === '1' ? 'easy' : e.key === '2' ? 'normal' : 'hard');
+    }
   }
 });
 
@@ -103,12 +119,14 @@ const heartsEl = $('hearts');
 const scoreEl = $('score');
 const distEl = $('dist');
 const toastEl = $('toast');
-const flashEl = $('flash');
 
-for (let i = 0; i < UI.maxHp; i++) {
-  const h = document.createElement('div');
-  h.className = 'heart';
-  heartsEl.appendChild(h);
+function buildHearts(n) {
+  heartsEl.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const h = document.createElement('div');
+    h.className = 'heart';
+    heartsEl.appendChild(h);
+  }
 }
 
 function showPanel(name) {
@@ -123,16 +141,11 @@ function hideOverlay() {
 }
 
 let toastTimer = 0;
-function toast(text) {
+function toast(text, ms = 1200) {
   toastEl.textContent = text;
   toastEl.classList.add('on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('on'), 1200);
-}
-
-function updateHearts() {
-  const hs = heartsEl.children;
-  for (let i = 0; i < hs.length; i++) hs[i].classList.toggle('off', i >= game.player.hp);
+  toastTimer = setTimeout(() => toastEl.classList.remove('on'), ms);
 }
 
 function updateHud() {
@@ -144,6 +157,33 @@ function updateHud() {
   }
 }
 
+// ---------------------------------------------------------------- difficulty
+
+function syncDifficultyUi() {
+  const d = DIFFICULTIES[difficulty];
+  for (const btn of $('diffs').querySelectorAll('.diff')) {
+    btn.classList.toggle('active', btn.dataset.diff === difficulty);
+  }
+  $('hud-diff').textContent = d.labelEn;
+  $('best-title').textContent = String(readBest(difficulty));
+  $('seed-label').textContent = seedLabel;
+}
+
+function setDifficulty(id) {
+  if (!DIFFICULTIES[id] || id === difficulty) return;
+  difficulty = id;
+  localStorage.setItem(DIFF_KEY, id);
+  game = makeGame();
+  buildHearts(DIFFICULTIES[id].hp);
+  syncDifficultyUi();
+  audio.start();
+  toast(`${DIFFICULTIES[id].label} ${DIFFICULTIES[id].labelEn}`, 900);
+}
+
+for (const btn of $('diffs').querySelectorAll('.diff')) {
+  btn.addEventListener('click', () => setDifficulty(btn.dataset.diff));
+}
+
 // ---------------------------------------------------------------- flow
 
 function startRun() {
@@ -151,9 +191,10 @@ function startRun() {
   audio.start();
   game.reset();
   game.start();
+  buildHearts(game.player.maxHp);
+  $('hud-diff').textContent = DIFFICULTIES[difficulty].labelEn;
   hideOverlay();
-  updateHearts();
-  toast('RUN');
+  toast('A / D 移动 · SPACE 跳跃', 1800);
 }
 
 function pauseRun() {
@@ -175,14 +216,16 @@ function togglePause() {
 }
 
 function onGameOver(score, distance) {
-  if (score > best) {
-    best = score;
-    localStorage.setItem(BEST_KEY, String(best));
-  }
+  const key = bestStorageKey(difficulty);
+  const prev = readBest(difficulty);
+  if (score > prev) localStorage.setItem(key, String(score));
+  const best = Math.max(prev, score);
+
   $('final-score').textContent = String(score);
   $('final-dist').textContent = `${distance} m`;
   $('final-best').textContent = String(best);
   $('final-seed').textContent = seedLabel;
+  $('final-diff').textContent = DIFFICULTIES[difficulty].labelEn;
   showPanel('over');
 }
 
@@ -191,9 +234,8 @@ $('btn-retry').addEventListener('click', startRun);
 $('btn-resume').addEventListener('click', resumeRun);
 $('btn-quit').addEventListener('click', () => {
   game.reset();
+  syncDifficultyUi();
   showPanel('title');
-  $('seed-label').textContent = seedLabel;
-  $('best-title').textContent = String(best);
 });
 
 $('seed-label').addEventListener('click', () => {
@@ -245,12 +287,12 @@ function frame(now) {
 }
 
 // init
-$('seed-label').textContent = seedLabel;
-$('best-title').textContent = String(best);
+buildHearts(DIFFICULTIES[difficulty].hp);
+syncDifficultyUi();
 showPanel('title');
 requestAnimationFrame(frame);
 
-// headless QA mode: ?auto=1 plays itself so the game can be smoke-tested
+// headless QA: ?auto=1 plays itself so the build can be smoke-tested
 if (params.has('auto')) {
   keys.right = true;
   setTimeout(startRun, 120);
@@ -260,4 +302,3 @@ if (params.has('auto')) {
     setTimeout(() => { keys.jump = false; }, 160);
   }, 760);
 }
-
