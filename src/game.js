@@ -248,7 +248,8 @@ export class Game {
   }
 
   finish() {
-    document.title = `DEAD cause=${this.player.hurtCause || 'none'} hp=${this.player.hp} dist=${this.distance} x=${Math.round(this.player.x)} y=${Math.round(this.player.y)}`;
+    const el = document.getElementById('final-seed');
+    if (el) el.textContent = `CAUSE=${this.player.hurtCause || 'none'} HP=${this.player.hp} X=${Math.round(this.player.x)} Y=${Math.round(this.player.y)}`;
     this.state = 'over';
     this.audio.over();
     this.shake = 1.2;
