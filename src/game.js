@@ -156,7 +156,7 @@ export class Game {
         this.shake = Math.max(this.shake, 0.55);
       } else {
         const dir = (p.x + p.w / 2) < (b.x + b.w / 2) ? 1 : -1;
-        p.hurtCause = 'enemy'; if (p.hurt(dir)) {
+        if (p.hurt(dir)) {
           this.burst(p.x + p.w / 2, p.y + p.h / 2, 18, 'rgba(244,114,182,0.9)', 230);
           this.audio.hurt();
           this.shake = Math.max(this.shake, 0.8);
@@ -166,12 +166,11 @@ export class Game {
   }
 
   updateHazards() {
-    if (this.player.hazardOverlap(this.world)) document.title = 'HAZARD TOUCH ' + Math.round(this.player.x);
     const p = this.player;
     if (!p.alive) return;
     if (p.iframes > 0) return;
     if (p.hazardOverlap(this.world)) {
-      p.hurtCause = 'hazard'; if (p.hurt(p.facing)) {
+      if (p.hurt(p.facing)) {
         this.burst(p.x + p.w / 2, p.y + p.h, 16, 'rgba(244,114,182,0.9)', 220);
         this.audio.hurt();
         this.shake = Math.max(this.shake, 0.8);
@@ -248,8 +247,6 @@ export class Game {
   }
 
   finish() {
-    const el = document.getElementById('final-seed');
-    if (el) el.textContent = `CAUSE=${this.player.hurtCause || 'none'} HP=${this.player.hp} X=${Math.round(this.player.x)} Y=${Math.round(this.player.y)}`;
     this.state = 'over';
     this.audio.over();
     this.shake = 1.2;
