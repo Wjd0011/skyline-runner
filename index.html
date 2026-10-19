@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+<title>SKYLINE RUNNER — 天际行者</title>
+<meta name="description" content="A neon skyline platformer with procedurally generated buildings, AI enemies, and zero dependencies." />
+<meta property="og:title" content="SKYLINE RUNNER — 天际行者" />
+<meta property="og:description" content="Procedural neon skyline platformer. Run the rooftops." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B0F1A'/%3E%3Cpath d='M7 23 L16 8 L25 23' stroke='%2322D3EE' stroke-width='2.6' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas id="game" aria-label="game canvas"></canvas>
+
+<div id="hud" class="hud hidden" aria-hidden="true">
+  <div class="hud-block hud-left">
+    <div class="hearts" id="hearts"></div>
+  </div>
+  <div class="hud-block hud-right">
+    <div class="stat">
+      <span class="label">SCORE</span>
+      <span class="value" id="score">0</span>
+    </div>
+    <div class="stat">
+      <span class="label">DISTANCE</span>
+      <span class="value" id="dist">0<span class="unit">m</span></span>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<div id="overlay" class="overlay">
+  <section class="panel" id="panel-title">
+    <div class="kicker">PROCEDURAL SKYLINE PLATFORMER</div>
+    <h1>SKYLINE<br /><span>RUNNER</span></h1>
+    <p class="sub">天际行者 · 每一栋建筑都由种子生成</p>
+    <button class="btn primary" id="btn-start">开始奔跑 <kbd>ENTER</kbd></button>
+    <div class="controls">
+      <span><kbd>A</kbd><kbd>D</kbd> 移动</span>
+      <span><kbd>SPACE</kbd> 跳跃</span>
+      <span><kbd>ESC</kbd> 暂停</span>
+    </div>
+    <div class="meta">
+      <span>SEED <b id="seed-label">—</b></span>
+      <span>BEST <b id="best-title">0</b></span>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="panel-pause">
+    <div class="kicker">PAUSED</div>
+    <h2>暂停</h2>
+    <p class="sub">按 <kbd>ESC</kbd> 继续</p>
+    <button class="btn primary" id="btn-resume">继续 <kbd>ESC</kbd></button>
+    <button class="btn ghost" id="btn-quit">回到标题</button>
+  </section>
+
+  <section class="panel hidden" id="panel-over">
+    <div class="kicker danger">SIGNAL LOST</div>
+    <h2>本次结束</h2>
+    <div class="results">
+      <div class="result"><span class="label">SCORE</span><b id="final-score">0</b></div>
+      <div class="result"><span class="label">DISTANCE</span><b id="final-dist">0 m</b></div>
+      <div class="result"><span class="label">BEST</span><b id="final-best">0</b></div>
+    </div>
+    <button class="btn primary" id="btn-retry">再来一次 <kbd>ENTER</kbd></button>
+    <p class="seed-line">SEED <b id="final-seed">—</b></p>
+  </section>
+</div>
+
+<div id="touch" class="touch hidden">
+  <button class="tbtn" data-dir="left" aria-label="left">◀</button>
+  <button class="tbtn" data-dir="right" aria-label="right">▶</button>
+  <button class="tbtn jump" data-dir="jump" aria-label="jump">▲</button>
+</div>
+
+<div id="flash" class="flash"></div>
+
+<pre id="err" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:99;margin:0;padding:12px;border-radius:8px;background:rgba(60,0,20,.92);color:#ffb4d1;font:12px/1.5 monospace;white-space:pre-wrap;max-height:40vh;overflow:auto"></pre>
+<script>
+  window.addEventListener('error', (e) => {
+    const el = document.getElementById('err');
+    if (!el) return;
+    el.style.display = 'block';
+    el.textContent = (e.message || 'error') + '\n' + (e.filename || '') + ':' + (e.lineno || '');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const el = document.getElementById('err');
+    if (!el) return;
+    el.style.display = 'block';
+    el.textContent = 'Promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+  });
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
