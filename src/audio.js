@@ -39,6 +39,7 @@ export class Audio {
   land() { this.tone(120, 0.08, 'sine', 0.35, 80); }
   pickup() { this.tone(880, 0.12, 'square', 0.22, 1320); }
   stomp() { this.tone(180, 0.18, 'sawtooth', 0.35, 90); }
+  pad() { this.tone(210, 0.22, 'sine', 0.5, 880); }
   hurt() { this.tone(160, 0.3, 'sawtooth', 0.4, 60); }
   over() {
     this.tone(300, 0.5, 'sine', 0.4, 80);

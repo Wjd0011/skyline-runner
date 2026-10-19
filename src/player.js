@@ -19,7 +19,7 @@ export class Player {
     this.alive = true;
     this.animT = 0;
     this.runPhase = 0;
-    this.events = { jump: false, land: false };
+    this.events = { jump: false, land: false, pad: false };
   }
 
   collides(world, x = this.x, y = this.y) {
@@ -64,6 +64,7 @@ export class Player {
   update(dt, input, world) {
     this.events.jump = false;
     this.events.land = false;
+    this.events.pad = false;
     const wasGround = this.onGround;
 
     const axis = input.axis;
@@ -120,6 +121,18 @@ export class Player {
         this.y = Math.floor(ny / TILE) * TILE + TILE + 0.01;
       }
       this.vy = 0;
+    }
+
+    // launch pads fling the runner upward instead of letting it settle
+    if (this.onGround) {
+      const footX = Math.floor((this.x + this.w / 2) / TILE);
+      const footY = Math.floor((this.y + this.h + 2) / TILE);
+      if (world.pad(footX, footY)) {
+        this.vy = -1180;
+        this.onGround = false;
+        this.events.pad = true;
+        this.jumpBuf = 0;
+      }
     }
 
     if (!wasGround && this.onGround) this.events.land = true;

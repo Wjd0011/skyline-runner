@@ -72,6 +72,11 @@ export class Game {
       this.audio.land();
       this.dust(p.x + p.w / 2, p.y + p.h, 6);
     }
+    if (p.events.pad) {
+      this.audio.pad();
+      this.burst(p.x + p.w / 2, p.y + p.h, 14, 'rgba(143,227,255,0.9)', 220);
+      this.shake = Math.max(this.shake, 0.25);
+    }
 
     // world streaming
     this.world.ensure(p.x);

@@ -14,6 +14,7 @@ A neon skyline platformer where every building is procedurally generated from a 
 ## What makes it different
 
 - **Procedural architecture** — buildings, canyons, stepping ledges and rooftop props are generated chunk by chunk from a seed. Same seed, same skyline; share it via `?seed=NEON42`.
+- **Every roof is reachable** — tall blocks grow stepped shoulders (a terraced silhouette), so the first step is never higher than 2 tiles (64 px) against a 155 px jump. Launch pads in the canyons fling you onto the high rooftops instead.
 - **AI enemies that react** — patrol walkers chase you across a roof, drones drift until you enter their range and then dive. Both can be stomped; both can end your run.
 - **Distance-driven pressure** — the first 96 m are deliberately calm, then enemy density and speed ramp with distance instead of hitting you with a wall of robots on spawn.
 - **Three difficulty modes** — Easy / Normal / Hard change hearts, spawn curve, enemy speed and score multiplier. High scores are tracked per mode.
@@ -60,6 +61,7 @@ src/
 
 - **Determinism**: chunk `i` is generated from `mulberry32(seed ^ hash(i))`, so regeneration never changes a level you have already seen.
 - **Streaming**: only a ±2 chunk window is kept in memory; entities are born and retired with their chunk.
+- **Reachability by construction**: buildings taper towards both edges (`heights[]` per column), which guarantees a climbable staircase on every block instead of an unscalable wall. `world.js` never emits a step taller than the jump arc.
 - **Physics**: 120 Hz fixed timestep with accumulator, so collision behaviour is identical on 60 Hz and 144 Hz displays.
 - **Feel**: gravity is increased by 2.2× while the jump key is released mid-rise, giving variable jump height without a second timer.
 

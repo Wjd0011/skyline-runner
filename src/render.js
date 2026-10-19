@@ -247,8 +247,11 @@ export class Renderer {
       ctx.fillStyle = C.building;
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
-          if (chunk.map[ty * CHUNK_W + tx] === 1) {
+          const tv = chunk.map[ty * CHUNK_W + tx];
+          if (tv === 1 || tv === 4) {
+            ctx.fillStyle = tv === 4 ? '#0B1A22' : C.building;
             ctx.fillRect(chunk.baseX + tx * TILE, ty * TILE, TILE, TILE);
+            ctx.fillStyle = C.building;
           }
         }
       }
@@ -256,6 +259,7 @@ export class Renderer {
       this.drawBuildings(ctx, chunk, cam, vw, vh, groundTop);
       this.drawStreetEdge(ctx, chunk, groundTop);
       this.drawHazards(ctx, chunk, tx0, tx1, ty0, ty1);
+      this.drawPads(ctx, chunk, tx0, tx1, ty0, ty1);
     }
 
     this.drawTraffic(ctx, game);
@@ -308,41 +312,49 @@ export class Renderer {
         continue;
       }
 
-      // vertical edge lines
-      ctx.strokeStyle = 'rgba(60,90,130,0.35)';
+      const heights = b.heights || new Array(b.w).fill(b.h);
+      const steps = b.steps || 0;
+      const seed = Math.floor(b.seed * 1000);
+      const colTop = (c) => (b.top + (b.h - heights[c])) * TILE;
+
+      // terraced silhouette
+      ctx.strokeStyle = 'rgba(60,90,130,0.30)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(bx + 0.5, roof);
-      ctx.lineTo(bx + 0.5, groundTop);
-      ctx.moveTo(bx + bw - 0.5, roof);
+      ctx.moveTo(bx + 0.5, colTop(0));
+      for (let c = 1; c < b.w; c++) {
+        ctx.lineTo(bx + c * TILE + 0.5, colTop(c - 1));
+        ctx.lineTo(bx + c * TILE + 0.5, colTop(c));
+      }
+      ctx.lineTo(bx + bw - 0.5, colTop(b.w - 1));
       ctx.lineTo(bx + bw - 0.5, groundTop);
+      ctx.moveTo(bx + 0.5, colTop(0));
+      ctx.lineTo(bx + 0.5, groundTop);
       ctx.stroke();
 
-      // windows
-      const rows = Math.max(1, Math.floor((groundTop - roof) / 22) - 1);
-      const cols = Math.max(1, Math.floor(bw / 20));
-      const seed = Math.floor(b.seed * 1000);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
+      // neon crown on every column, windows underneath
+      for (let c = 0; c < b.w; c++) {
+        const cx = bx + c * TILE;
+        const ty = colTop(c);
+        this.neonLine(ctx, cx + 1, ty + 0.5, cx + TILE - 1, ty + 0.5, C.cyan, 1.5, 0.82);
+
+        const rows = Math.max(0, Math.floor((groundTop - ty) / 22) - 1);
+        for (let r = 0; r < rows; r++) {
           const lit = hash2(b.x0 + c, b.top + r, seed);
           if (lit < 0.58) continue;
-          const wx = bx + 10 + c * ((bw - 20) / Math.max(1, cols - 1 || 1));
-          const wy = roof + 16 + r * 22;
+          const wy = ty + 16 + r * 22;
           if (wy > groundTop - 8) continue;
           const hue = hash2(c, r, seed + 4);
           const col = hue > 0.72 ? '251,191,36' : hue > 0.4 ? '125,211,252' : '167,139,250';
           const flick = 0.55 + 0.45 * Math.sin(performance.now() * 0.0012 + lit * 12);
           ctx.fillStyle = `rgba(${col},${0.30 + 0.35 * flick})`;
-          ctx.fillRect(wx, wy, 5, 8);
+          ctx.fillRect(cx + 13, wy, 5, 8);
         }
       }
 
-      // roof neon
-      this.neonLine(ctx, bx + 2, roof + 0.5, bx + bw - 2, roof + 0.5, C.cyan, 1.6, 0.9);
-
-      // antenna + beacon on tall buildings
-      if (b.h >= 5) {
-        const ax = bx + bw * 0.72;
+      // antenna + beacon above the crown
+      if (b.h >= 4) {
+        const ax = bx + bw * 0.5;
         ctx.strokeStyle = 'rgba(120,160,200,0.45)';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
@@ -356,13 +368,56 @@ export class Renderer {
         ctx.fill();
       }
 
-      // rooftop box
-      if (b.w >= 5) {
+      // rooftop service box on the flat crown
+      const crownW = b.w - steps * 2;
+      if (crownW >= 2) {
+        const boxX = bx + steps * TILE + 8;
         ctx.fillStyle = '#0D1424';
-        ctx.fillRect(bx + bw * 0.18, roof - 14, 20, 14);
+        ctx.fillRect(boxX, roof - 14, 20, 14);
         ctx.strokeStyle = 'rgba(80,120,160,0.35)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(bx + bw * 0.18 + 0.5, roof - 13.5, 20, 14);
+        ctx.strokeRect(boxX + 0.5, roof - 13.5, 20, 14);
+      }
+    }
+  }
+
+  drawPads(ctx, chunk, tx0, tx1, ty0, ty1) {
+    const t = performance.now() * 0.004;
+    for (let ty = Math.max(ty0, 0); ty <= Math.min(ty1, CHUNK_H - 1); ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (chunk.map[ty * CHUNK_W + tx] !== 4) continue;
+        const x = chunk.baseX + tx * TILE;
+        const top = ty * TILE;
+        const pulse = 0.55 + 0.45 * Math.sin(t + tx * 0.9);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        // beacon so a launch pad reads from across the screen
+        const beam = ctx.createLinearGradient(0, top, 0, top - 84);
+        beam.addColorStop(0, `rgba(34,211,238,${0.20 + 0.12 * pulse})`);
+        beam.addColorStop(0.6, `rgba(34,211,238,${0.06 + 0.05 * pulse})`);
+        beam.addColorStop(1, 'rgba(34,211,238,0)');
+        ctx.fillStyle = beam;
+        ctx.fillRect(x + 5, top - 84, TILE - 10, 84);
+
+        ctx.fillStyle = `rgba(34,211,238,${0.10 + 0.10 * pulse})`;
+        ctx.fillRect(x + 2, top + 2, TILE - 4, TILE - 6);
+
+        ctx.fillStyle = `rgba(20,40,52,${0.85})`;
+        ctx.fillRect(x + 4, top + 12, TILE - 8, 12);
+
+        ctx.strokeStyle = `rgba(143,227,255,${0.55 + 0.35 * pulse})`;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 2; i++) {
+          const cy = top + 16 + i * 5;
+          ctx.beginPath();
+          ctx.moveTo(x + 8, cy + 4);
+          ctx.lineTo(x + TILE / 2, cy);
+          ctx.lineTo(x + TILE - 8, cy + 4);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     }
   }
