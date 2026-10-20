@@ -13,9 +13,9 @@
 <body>
 <canvas id="game" aria-label="game canvas"></canvas>
 
-<div id="hud" class="hud hidden" aria-hidden="true">
+<div id="hud" class="hud hidden">
   <div class="hud-block hud-left">
-    <div class="hearts" id="hearts"></div>
+    <div class="hearts" id="hearts" role="img" aria-label="生命 3"></div>
   </div>
   <div class="hud-diff" id="hud-diff">NORMAL</div>
   <div class="hud-block hud-right">
@@ -25,7 +25,7 @@
     </div>
     <div class="stat">
       <span class="label">DISTANCE</span>
-      <span class="value" id="dist">0<span class="unit">m</span></span>
+      <span class="value"><span id="dist">0</span><span class="unit">m</span></span>
     </div>
   </div>
 </div>
@@ -37,20 +37,23 @@
     <div class="kicker">PROCEDURAL SKYLINE PLATFORMER</div>
     <h1>SKYLINE<br /><span>RUNNER</span></h1>
     <p class="sub">天际行者 · 每一栋建筑都由种子生成</p>
-    <div class="diffs" id="diffs" role="group" aria-label="难度选择">
-      <button class="diff" data-diff="easy">简单<small>EASY</small></button>
-      <button class="diff active" data-diff="normal">中等<small>NORMAL</small></button>
-      <button class="diff" data-diff="hard">困难<small>HARD</small></button>
+    <div class="diffs" id="diffs" role="radiogroup" aria-label="难度选择">
+      <button class="diff" data-diff="easy" role="radio" aria-checked="false">简单<small>EASY</small></button>
+      <button class="diff active" data-diff="normal" role="radio" aria-checked="true">中等<small>NORMAL</small></button>
+      <button class="diff" data-diff="hard" role="radio" aria-checked="false">困难<small>HARD</small></button>
     </div>
     <button class="btn primary" id="btn-start">开始奔跑 <kbd>ENTER</kbd></button>
     <div class="controls">
       <span><kbd>A</kbd><kbd>D</kbd> 移动</span>
       <span><kbd>SPACE</kbd> 跳跃</span>
       <span><kbd>ESC</kbd> 暂停</span>
+      <span><kbd>M</kbd> 声音</span>
     </div>
     <div class="meta">
       <span>SEED <b id="seed-label">—</b></span>
       <span>BEST <b id="best-title">0</b></span>
+      <span>VER <b id="version">2.0.0</b></span>
+      <button class="sound-toggle" type="button" aria-pressed="true">SOUND ON</button>
     </div>
   </section>
 
@@ -60,6 +63,7 @@
     <p class="sub">按 <kbd>ESC</kbd> 继续</p>
     <button class="btn primary" id="btn-resume">继续 <kbd>ESC</kbd></button>
     <button class="btn ghost" id="btn-quit">回到标题</button>
+    <button class="sound-toggle ghost" type="button" aria-pressed="true">SOUND ON</button>
   </section>
 
   <section class="panel hidden" id="panel-over">
@@ -76,6 +80,7 @@
 </div>
 
 <div id="touch" class="touch hidden">
+  <button class="tbtn pause" data-dir="pause" aria-label="暂停">❚❚</button>
   <button class="tbtn" data-dir="left" aria-label="left">◀</button>
   <button class="tbtn" data-dir="right" aria-label="right">▶</button>
   <button class="tbtn jump" data-dir="jump" aria-label="jump">▲</button>

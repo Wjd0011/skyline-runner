@@ -1,8 +1,8 @@
 :root {
   --bg: #04060e;
   --ink: #e6edf3;
-  --muted: #7c8ca3;
-  --dim: #46566d;
+  --muted: #9aabc2;
+  --dim: #8294ab;
   --cyan: #22d3ee;
   --violet: #a78bfa;
   --magenta: #f472b6;
@@ -215,7 +215,9 @@ kbd {
 .meta {
   display: flex;
   justify-content: center;
-  gap: 26px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid rgba(80, 110, 150, 0.18);
@@ -226,6 +228,29 @@ kbd {
 }
 
 .meta b { color: var(--muted); font-weight: 500; }
+
+.sound-toggle {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 1.8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.sound-toggle:hover { color: var(--ink); border-color: rgba(34, 211, 238, 0.45); }
+
+.sound-toggle[aria-pressed="true"] {
+  color: var(--cyan);
+  border-color: rgba(34, 211, 238, 0.5);
+}
+
+.btn.ghost.sound-toggle { background: transparent; margin-top: 14px; }
 
 .results {
   display: grid;
@@ -352,9 +377,11 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   padding: 9px 18px;
   min-width: 80px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(10, 16, 30, 0.5);
@@ -402,4 +429,33 @@ kbd {
 @media (max-width: 520px) {
   .hud-diff { top: 14px; font-size: 8.5px; }
   .diff { padding: 8px 12px; min-width: 64px; font-size: 12px; }
+}
+
+/* ---------------- accessibility ---------------- */
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Pause lives above the jump button so one thumb covers both. */
+.tbtn.pause {
+  position: fixed;
+  right: 22px;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  width: 44px;
+  height: 44px;
+  font-size: 10px;
+  letter-spacing: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

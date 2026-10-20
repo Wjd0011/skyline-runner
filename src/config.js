@@ -1,4 +1,5 @@
 export const TILE = 32;
+export const VERSION = '2.0.0';
 export const CHUNK_W = 24;
 export const CHUNK_H = 22;
 export const WORLD_H = CHUNK_H * TILE;

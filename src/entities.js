@@ -36,13 +36,9 @@ export class Walker {
     const dy = Math.abs(p.y + p.h - this.y);
 
     this.chasing = p.alive && Math.abs(dx) < 300 && dy < 78;
+    if (this.chasing) this.dir = dx < 0 ? -1 : 1;
 
-    if (this.chasing) {
-      this.dir = dx < 0 ? -1 : 1;
-      this.x += this.dir * this.chaseSpeed * dt;
-    } else {
-      this.x += this.dir * this.speed * dt;
-    }
+    this.x += this.dir * (this.chasing ? this.chaseSpeed : this.speed) * dt;
 
     if (this.x < this.minX) {
       this.x = this.minX;
@@ -52,11 +48,29 @@ export class Walker {
       this.dir = -1;
     }
 
-    // never walk off the ledge
-    const probeX = this.x + this.dir * (this.w / 2 + 3);
-    const footTileX = Math.floor(probeX / TILE);
-    const footTileY = Math.floor((this.y + 3) / TILE);
-    if (!game.world.solid(footTileX, footTileY)) {
+    this.followRoof(game.world);
+  }
+
+  /**
+   * Keep the feet on the roof. Terraces are one tile deep, so anything
+   * within one row is walkable; a real drop reverses direction instead of
+   * letting the walker fall off the building.
+   */
+  followRoof(world) {
+    const footRow = Math.round(this.y / TILE);
+    const centerCol = Math.floor(this.x / TILE);
+    for (let r = footRow - 1; r <= footRow + 1; r++) {
+      if (world.solid(centerCol, r)) {
+        this.y = r * TILE;
+        break;
+      }
+    }
+
+    const row = Math.round(this.y / TILE);
+    const probeCol = Math.floor((this.x + this.dir * (this.w / 2 + 2)) / TILE);
+    const ahead =
+      world.solid(probeCol, row - 1) || world.solid(probeCol, row) || world.solid(probeCol, row + 1);
+    if (!ahead) {
       this.dir *= -1;
       this.x += this.dir * 6;
     }

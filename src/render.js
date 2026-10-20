@@ -13,13 +13,23 @@ export class Renderer {
     this.scale = 1;
     this.stars = [];
     this.rain = [];
+    // Gradients are immutable per size/ground level; building them once keeps
+    // thousands of per-frame allocations out of the draw loop.
+    this._grads = { sky: null, skyGlow: null, haze: null, sun: null, street: new Map(), glow: new Map() };
+    this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', (e) => {
+      this.reducedMotion = e.matches;
+    });
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.seedStars();
   }
 
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Low-power / touch devices cap at 1.5 so the fill rate stays inside
+    // the 55 fps mobile budget (PRD risk R3).
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
     this.dpr = dpr;
     this.w = window.innerWidth;
     this.h = window.innerHeight;
@@ -28,6 +38,7 @@ export class Renderer {
     this.canvas.style.width = this.w + 'px';
     this.canvas.style.height = this.h + 'px';
     this.scale = clamp(Math.min(this.w / 1000, this.h / 820), 0.55, 1.5);
+    this._grads = { sky: null, skyGlow: null, haze: null, sun: null, street: new Map(), glow: new Map() };
   }
 
   seedStars() {
@@ -51,10 +62,11 @@ export class Renderer {
   get viewH() { return this.h / this.scale; }
 
   draw(game) {
+    const t0 = performance.now();
     const ctx = this.ctx;
     const { cam } = game;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.clearRect(0, 0, this.w, this.h);
+    // No clearRect: the sky gradient repaints every pixel (alpha:false).
 
     this.drawSky(ctx, cam);
     this.drawStars(ctx, cam);
@@ -62,10 +74,11 @@ export class Renderer {
     this.drawSkyline(ctx, cam, 0.10, this.h * 0.72, '#070B16', 0.0, 26, 150, 58, 0.55);
     this.drawSkyline(ctx, cam, 0.24, this.h * 0.80, '#0A1020', 1.7, 40, 190, 74, 0.4);
     this.drawHaze(ctx);
-    this.drawRain(ctx, game.time);
+    if (!this.reducedMotion) this.drawRain(ctx, game.time);
 
     // ---- world space ----
-    const shake = game.shake || 0;
+    // prefers-reduced-motion: no camera shake, no particle burst.
+    const shake = this.reducedMotion ? 0 : game.shake || 0;
     const sx = shake > 0 ? (Math.random() - 0.5) * shake * 18 : 0;
     const sy = shake > 0 ? (Math.random() - 0.5) * shake * 18 : 0;
 
@@ -77,31 +90,37 @@ export class Renderer {
     this.drawOrbs(ctx, game);
     this.drawEnemies(ctx, game);
     this.drawPlayer(ctx, game);
-    this.drawParticles(ctx, game);
+    if (!this.reducedMotion) this.drawParticles(ctx, game);
 
     ctx.restore();
 
     this.drawForeground(ctx, cam);
     this.drawVignette(ctx);
     this.drawDamage(ctx, game);
+    this.lastDrawMs = performance.now() - t0;
   }
 
   // ---------------------------------------------------------------- sky
 
   drawSky(ctx, cam) {
-    const g = ctx.createLinearGradient(0, 0, 0, this.h);
-    g.addColorStop(0, C.bgTop);
-    g.addColorStop(0.55, C.bgMid);
-    g.addColorStop(1, C.bgBot);
-    ctx.fillStyle = g;
+    if (!this._grads.sky) {
+      const g = ctx.createLinearGradient(0, 0, 0, this.h);
+      g.addColorStop(0, C.bgTop);
+      g.addColorStop(0.55, C.bgMid);
+      g.addColorStop(1, C.bgBot);
+      this._grads.sky = g;
+
+      const hg = ctx.createRadialGradient(this.w * 0.68, this.h * 0.38, 10, this.w * 0.68, this.h * 0.38, this.h * 1.1);
+      hg.addColorStop(0, 'rgba(167,139,250,0.16)');
+      hg.addColorStop(0.4, 'rgba(56,189,248,0.05)');
+      hg.addColorStop(1, 'rgba(0,0,0,0)');
+      this._grads.skyGlow = hg;
+    }
+    ctx.fillStyle = this._grads.sky;
     ctx.fillRect(0, 0, this.w, this.h);
 
     // horizon glow
-    const hg = ctx.createRadialGradient(this.w * 0.68, this.h * 0.38, 10, this.w * 0.68, this.h * 0.38, this.h * 1.1);
-    hg.addColorStop(0, 'rgba(167,139,250,0.16)');
-    hg.addColorStop(0.4, 'rgba(56,189,248,0.05)');
-    hg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = hg;
+    ctx.fillStyle = this._grads.skyGlow;
     ctx.fillRect(0, 0, this.w, this.h);
   }
 
@@ -122,14 +141,17 @@ export class Renderer {
     const cx = this.w * 0.7 - cam.x * 0.03;
     const cy = this.h * 0.34;
     const r = Math.min(this.w, this.h) * 0.15;
-    const g = ctx.createLinearGradient(0, cy - r, 0, cy + r);
-    g.addColorStop(0, 'rgba(255,180,120,0.95)');
-    g.addColorStop(0.5, 'rgba(244,114,182,0.85)');
-    g.addColorStop(1, 'rgba(139,92,246,0.55)');
+    if (!this._grads.sun) {
+      const g = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+      g.addColorStop(0, 'rgba(255,180,120,0.95)');
+      g.addColorStop(0.5, 'rgba(244,114,182,0.85)');
+      g.addColorStop(1, 'rgba(139,92,246,0.55)');
+      this._grads.sun = g;
+    }
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, 6.2832);
-    ctx.fillStyle = g;
+    ctx.fillStyle = this._grads.sun;
     ctx.shadowColor = 'rgba(244,114,182,0.55)';
     ctx.shadowBlur = 70;
     ctx.fill();
@@ -177,10 +199,13 @@ export class Renderer {
   }
 
   drawHaze(ctx) {
-    const g = ctx.createLinearGradient(0, this.h * 0.55, 0, this.h);
-    g.addColorStop(0, 'rgba(28,18,52,0)');
-    g.addColorStop(1, 'rgba(60,24,90,0.30)');
-    ctx.fillStyle = g;
+    if (!this._grads.haze) {
+      const g = ctx.createLinearGradient(0, this.h * 0.55, 0, this.h);
+      g.addColorStop(0, 'rgba(28,18,52,0)');
+      g.addColorStop(1, 'rgba(60,24,90,0.30)');
+      this._grads.haze = g;
+    }
+    ctx.fillStyle = this._grads.haze;
     ctx.fillRect(0, this.h * 0.55, this.w, this.h * 0.45);
   }
 
@@ -214,9 +239,13 @@ export class Renderer {
       const groundTop = gy * TILE;
 
       // street band
-      const bg = ctx.createLinearGradient(0, groundTop, 0, Math.min(WORLD_H, cam.y + vh));
-      bg.addColorStop(0, '#0A101C');
-      bg.addColorStop(1, '#05080F');
+      let bg = this._grads.street.get(gy);
+      if (!bg) {
+        bg = ctx.createLinearGradient(0, groundTop, 0, groundTop + 600);
+        bg.addColorStop(0, '#0A101C');
+        bg.addColorStop(1, '#05080F');
+        this._grads.street.set(gy, bg);
+      }
       ctx.fillStyle = bg;
       const bottom = Math.max(WORLD_H, cam.y + vh + 60);
       ctx.fillRect(chunk.baseX, groundTop, CHUNK_PX, bottom - groundTop);
@@ -232,9 +261,13 @@ export class Renderer {
       }
 
       // street glow strip
-      const sg = ctx.createLinearGradient(0, groundTop, 0, groundTop + 120);
-      sg.addColorStop(0, 'rgba(34,211,238,0.07)');
-      sg.addColorStop(1, 'rgba(34,211,238,0)');
+      let sg = this._grads.glow.get(gy);
+      if (!sg) {
+        sg = ctx.createLinearGradient(0, groundTop, 0, groundTop + 120);
+        sg.addColorStop(0, 'rgba(34,211,238,0.07)');
+        sg.addColorStop(1, 'rgba(34,211,238,0)');
+        this._grads.glow.set(gy, sg);
+      }
       ctx.fillStyle = sg;
       ctx.fillRect(chunk.baseX, groundTop, CHUNK_PX, 120);
 

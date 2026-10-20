@@ -10,6 +10,21 @@ export const PAD = 4;
 
 const CHUNK_PX = CHUNK_W * TILE;
 
+/**
+ * Spawn pressure for a distance in metres. Pure and monotone by
+ * construction: chances only ever rise until the ramp saturates.
+ */
+export function spawnPressure(diff, meters) {
+  const [rampA, rampB] = diff.ramp;
+  const t = clamp((meters - rampA) / Math.max(1, rampB - rampA), 0, 1);
+  return {
+    t,
+    walkerChance: lerp(diff.walker[0], diff.walker[1], t),
+    flyerChance: lerp(diff.flyer[0], diff.flyer[1], t),
+    speedMul: lerp(diff.speed[0], diff.speed[1], t),
+  };
+}
+
 export class World {
   constructor(seed, diff = DIFFICULTIES.normal) {
     this.seed = seed >>> 0;
@@ -53,11 +68,7 @@ export class World {
     // spawn pressure is a function of distance, not of the chunk alone:
     // the first two chunks stay empty, then pressure ramps with the run.
     const meters = (i * CHUNK_PX) / 16;
-    const [rampA, rampB] = this.diff.ramp;
-    const t = clamp((meters - rampA) / Math.max(1, rampB - rampA), 0, 1);
-    const walkerChance = lerp(this.diff.walker[0], this.diff.walker[1], t);
-    const flyerChance = lerp(this.diff.flyer[0], this.diff.flyer[1], t);
-    const speedMul = lerp(this.diff.speed[0], this.diff.speed[1], t);
+    const { walkerChance, flyerChance, speedMul } = spawnPressure(this.diff, meters);
     const calm = i <= 1;
 
     const decor = [];
@@ -68,7 +79,7 @@ export class World {
 
     while (x < CHUNK_W - 4) {
       const gapStart = x;
-      const gap = 2 + Math.floor(rng() * 2); // never narrower than two tiles
+      let gap = 2 + Math.floor(rng() * 2); // never narrower than two tiles
       x += gap;
       if (x >= CHUNK_W - 4) break;
 
@@ -80,6 +91,16 @@ export class World {
       // The opening chunk is kept low on purpose.
       const maxH = i === 0 ? 3 : w >= 6 ? 5 : 4;
       const h = 2 + Math.floor(rng() * (maxH - 1));
+
+      // A tall block needs a balcony, and a balcony needs somewhere to jump
+      // from. Widen the canyon to three tiles so the two-tile balcony still
+      // leaves one street tile free directly in front of it.
+      if (h >= 4 && gap < 3) {
+        gap = 3;
+        x = gapStart + gap;
+        if (x + w > CHUNK_W - 1) break;
+      }
+
       const steps = h >= 4 ? Math.min(2, Math.floor((w - 1) / 2)) : 0;
 
       const heights = [];
@@ -131,53 +152,61 @@ export class World {
         }
       }
 
-      // rooftop enemies stay on the flat crown, never on the terraces
+      // rooftop enemies walk the whole roof, terraces included. Patrol
+      // bounds are body-centre bounds, so the body never hangs past a wall.
       if (!calm && w >= 3 && rng() < walkerChance) {
-        spawns.push({
-          type: 'walker',
-          x: (x + w / 2) * TILE,
-          y: top * TILE,
-          minX: (x + steps) * TILE + 8,
-          maxX: (x + w - steps) * TILE - 8,
-          speedMul,
-        });
+        const wx = (x + w / 2) * TILE;
+        if (rectFree(map, wx - 15, top * TILE - 26, 30, 26)) {
+          spawns.push({
+            type: 'walker',
+            x: wx,
+            y: top * TILE,
+            minX: x * TILE + 16,
+            maxX: (x + w) * TILE - 16,
+            speedMul,
+          });
+        }
       }
 
       // rooftop orbs sit above the crown, never inside the block
       if (rng() < 0.4) {
-        spawns.push({ type: 'orb', x: (x + steps + 0.6) * TILE, y: (top - 1.15) * TILE });
-        spawns.push({ type: 'orb', x: (x + w - steps - 0.6) * TILE, y: (top - 1.15) * TILE });
+        for (const ox of [x + steps + 0.6, x + w - steps - 0.6]) {
+          const px = ox * TILE;
+          const py = (top - 1.15) * TILE;
+          if (rectFree(map, px - 9, py - 9, 18, 18)) spawns.push({ type: 'orb', x: px, y: py });
+        }
       }
 
       gaps.push({ start: gapStart, width: gap, balconyX });
       x += w;
     }
 
-    // canyon orbs float in open air above wide gaps, clear of every wall.
-    // Narrow slots and tiles occupied by balconies are skipped entirely.
+    // canyon orbs float in open air above the gaps, clear of every wall.
     for (const g of gaps) {
       if (g.width < 2) continue;
       if (rng() >= 0.6) continue;
       const cy = (groundY - 3.6) * TILE;
       const cx = (g.start + g.width / 2) * TILE;
-      const tx = Math.floor(cx / TILE);
-      const ty = Math.floor(cy / TILE);
-      if (map[ty * CHUNK_W + tx] !== EMPTY) continue;
-      if (g.balconyX >= 0 && tx >= g.balconyX && tx <= g.balconyX + 1) continue;
+      if (!rectFree(map, cx - 9, cy - 9, 18, 18)) continue;
       spawns.push({ type: 'orb', x: cx, y: cy });
     }
 
-    // drones patrolling the air
+    // drones patrol open air: never spawn inside a tower or a balcony
     if (!calm && rng() < flyerChance) {
-      const fx = (2 + Math.floor(rng() * (CHUNK_W - 4))) * TILE;
-      spawns.push({
-        type: 'flyer',
-        x: fx,
-        y: (groundY - 3.4 - rng() * 1.8) * TILE,
-        amp: 30 + rng() * 34,
-        speed: 0.8 + rng() * 0.7,
-        speedMul,
-      });
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const fx = (2 + rng() * (CHUNK_W - 4)) * TILE;
+        const fy = (groundY - 3.4 - rng() * 1.8) * TILE;
+        if (!rectFree(map, fx - 16, fy - 10, 32, 20)) continue;
+        spawns.push({
+          type: 'flyer',
+          x: fx,
+          y: fy,
+          amp: 30 + rng() * 34,
+          speed: 0.8 + rng() * 0.7,
+          speedMul,
+        });
+        break;
+      }
     }
 
     return {
@@ -186,6 +215,7 @@ export class World {
       groundY,
       map,
       decor,
+      gaps,
       spawns,
     };
   }
@@ -217,4 +247,21 @@ export class World {
     const c = this.chunks.get(this.chunkIndex(px));
     return c ? c.groundY * TILE : 15 * TILE;
   }
+}
+
+/** True when no non-empty tile touches the given pixel rectangle. */
+export function rectFree(map, x, y, w, h) {
+  const x0 = Math.floor(x / TILE);
+  const x1 = Math.floor((x + w - 0.001) / TILE);
+  const y0 = Math.floor(y / TILE);
+  const y1 = Math.floor((y + h - 0.001) / TILE);
+  for (let gy = y0; gy <= y1; gy++) {
+    if (gy < 0) continue;
+    if (gy >= CHUNK_H) return false;
+    for (let gx = x0; gx <= x1; gx++) {
+      if (gx < 0 || gx >= CHUNK_W) continue;
+      if (map[gy * CHUNK_W + gx] !== EMPTY) return false;
+    }
+  }
+  return true;
 }

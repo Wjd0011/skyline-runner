@@ -2,3 +2,7 @@ qa-*.png
 node_modules/
 .DS_Store
 live-*.png
+tests/artifacts/
+
+# Office lock files
+~$*

@@ -1,0 +1,17 @@
+{
+  "name": "skyline-runner",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Procedural neon skyline platformer — Canvas 2D, zero runtime dependencies.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "serve": "node tests/server.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node tests/e2e.mjs",
+    "verify": "npm test && npm run test:e2e"
+  }
+}

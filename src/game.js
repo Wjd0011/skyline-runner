@@ -3,6 +3,7 @@ import { clamp } from './rng.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Walker, Flyer, Orb } from './entities.js';
+import { orbGain, stompGain, COMBO_WINDOW } from './scoring.js';
 
 export class Game {
   constructor(renderer, audio, seedInt, seedLabel, diff) {
@@ -134,9 +135,8 @@ export class Game {
       if (dx * dx + dy * dy < 30 * 30) {
         o.alive = false;
         this.combo += 1;
-        this.comboT = 2.4;
-        const gain = Math.round(10 * Math.min(this.combo, 5) * this.diff.scoreMul);
-        this.score += gain;
+        this.comboT = COMBO_WINDOW;
+        this.score += orbGain(this.combo, this.diff.scoreMul);
         this.burst(o.x, o.y, 12, 'rgba(143,227,255,0.95)', 180);
         this.audio.pickup();
         this.shake = Math.max(this.shake, 0.18);
@@ -157,9 +157,9 @@ export class Game {
         e.alive = false;
         e.deadT = 0;
         p.vy = -640;
-        this.score += Math.round(50 * this.diff.scoreMul);
+        this.score += stompGain(this.diff.scoreMul);
         this.combo += 1;
-        this.comboT = 2.4;
+        this.comboT = COMBO_WINDOW;
         this.burst(b.x + b.w / 2, b.y + b.h / 2, 20, 'rgba(244,114,182,0.95)', 260);
         this.audio.stomp();
         this.shake = Math.max(this.shake, 0.55);
