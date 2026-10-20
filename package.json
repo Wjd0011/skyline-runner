@@ -12,6 +12,7 @@
     "serve": "node tests/server.mjs",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "node tests/e2e.mjs",
+    "test:memory": "node tests/memory.mjs 300",
     "verify": "npm test && npm run test:e2e"
   }
 }

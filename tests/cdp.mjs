@@ -79,7 +79,13 @@ export class Browser {
         await sleep(150);
       }
     }
-    if (!version) throw new Error('browser did not expose a debugging port');
+    if (!version) {
+      // Leave no orphaned browser behind: a half-started chrome would hold the
+      // port and make every retry fail with the same misleading message.
+      try { proc.kill(); } catch { /* ignore */ }
+      try { await rm(profile, { recursive: true, force: true }); } catch { /* ignore */ }
+      throw new Error(`browser did not expose a debugging port on ${port}`);
+    }
 
     const ws = new WebSocket(version.webSocketDebuggerUrl);
     await new Promise((res, rej) => {
@@ -101,13 +107,21 @@ export class Browser {
       const list = await getJson(`http://127.0.0.1:${this.port}/json/list`);
       target = list.find((t) => t.type === 'page');
     }
+    if (!target || !target.webSocketDebuggerUrl) {
+      throw new Error('no page target with a debugger url (is the browser still alive?)');
+    }
     return new Page(target.webSocketDebuggerUrl);
   }
 
   async close() {
     try { this.ws.close(); } catch { /* ignore */ }
+    const exited = new Promise((res) => {
+      if (this.proc.exitCode !== null || this.proc.signalCode !== null) return res();
+      this.proc.once('exit', res);
+      setTimeout(res, 3000);
+    });
     try { this.proc.kill(); } catch { /* ignore */ }
-    await sleep(300);
+    await exited;
     try { await rm(this.profile, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
@@ -120,6 +134,7 @@ export class Page {
     this.listeners = new Map();
     this.logs = [];
     this.errors = [];
+    this.warnings = [];
     this.ws = new WebSocket(wsUrl);
     this.ready = new Promise((res, rej) => {
       this.ws.addEventListener('open', res, { once: true });
@@ -184,6 +199,18 @@ export class Page {
     await this.send('Page.enable');
     await this.send('Runtime.enable');
     await this.send('Log.enable');
+    // Headless pages lose focus between protocol calls, which fires the game's
+    // blur handler (release input + pause). Without this, keyboard-driven
+    // checks silently measure a paused page.
+    this.focusEmulated = false;
+    try {
+      await this.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      this.focusEmulated = true;
+    } catch (err) {
+      // Do not fail here (older builds lack it), but do not hide it either:
+      // e2e asserts document.hasFocus() so a silent downgrade cannot pass.
+      this.warnings.push(`focus emulation unavailable: ${err.message}`);
+    }
   }
 
   async goto(url) {
@@ -208,13 +235,16 @@ export class Page {
 
   async waitFor(expression, { timeout = 8000, interval = 60 } = {}) {
     const deadline = Date.now() + timeout;
+    let lastErr = null;
     while (Date.now() < deadline) {
       try {
         if (await this.eval(expression)) return true;
-      } catch { /* page may still be loading */ }
+      } catch (err) {
+        lastErr = err; // page may still be loading, or the probe is broken
+      }
       await sleep(interval);
     }
-    throw new Error(`waitFor timed out: ${expression}`);
+    throw new Error(`waitFor timed out: ${expression}${lastErr ? ` (last error: ${lastErr.message})` : ''}`);
   }
 
   async key(key, { down = true, code, vk, text } = {}) {

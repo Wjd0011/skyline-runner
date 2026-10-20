@@ -46,12 +46,17 @@ export function startServer(port = 8123) {
         'content-length': body.length,
       });
       res.end(body);
-    } catch {
-      res.writeHead(404).end('not found');
+    } catch (err) {
+      // A missing file is a 404; anything else (EACCES, EMFILE) is a real
+      // server problem and must not masquerade as "asset not found".
+      const missing = err && (err.code === 'ENOENT' || err.code === 'EISDIR' || err.code === 'ENOTDIR');
+      if (!missing) console.error('[server]', req.url, err && err.code ? err.code : err);
+      res.writeHead(missing ? 404 : 500).end(missing ? 'not found' : 'server error');
     }
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    server.once('error', (err) => reject(new Error(`cannot listen on ${port}: ${err.code || err.message}`)));
     server.listen(port, '127.0.0.1', () => resolve(server));
   });
 }

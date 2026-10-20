@@ -11,79 +11,81 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<canvas id="game" aria-label="game canvas"></canvas>
+<canvas id="game" data-i18n-aria="doc.canvas" aria-label="游戏画面"></canvas>
 
 <div id="hud" class="hud hidden">
   <div class="hud-block hud-left">
     <div class="hearts" id="hearts" role="img" aria-label="生命 3"></div>
   </div>
-  <div class="hud-diff" id="hud-diff">NORMAL</div>
+  <div class="hud-diff" id="hud-diff">中等</div>
   <div class="hud-block hud-right">
     <div class="stat">
-      <span class="label">SCORE</span>
+      <span class="label" data-i18n="hud.score">分数</span>
       <span class="value" id="score">0</span>
     </div>
     <div class="stat">
-      <span class="label">DISTANCE</span>
-      <span class="value"><span id="dist">0</span><span class="unit">m</span></span>
+      <span class="label" data-i18n="hud.distance">距离</span>
+      <span class="value"><span id="dist">0</span><span class="unit" data-i18n="hud.unit">m</span></span>
     </div>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <div id="overlay" class="overlay">
   <section class="panel" id="panel-title">
-    <div class="kicker">PROCEDURAL SKYLINE PLATFORMER</div>
+    <div class="kicker" data-i18n="kicker.title">程序化霓虹跑酷</div>
     <h1>SKYLINE<br /><span>RUNNER</span></h1>
-    <p class="sub">天际行者 · 每一栋建筑都由种子生成</p>
-    <div class="diffs" id="diffs" role="radiogroup" aria-label="难度选择">
-      <button class="diff" data-diff="easy" role="radio" aria-checked="false">简单<small>EASY</small></button>
-      <button class="diff active" data-diff="normal" role="radio" aria-checked="true">中等<small>NORMAL</small></button>
-      <button class="diff" data-diff="hard" role="radio" aria-checked="false">困难<small>HARD</small></button>
+    <p class="sub" data-i18n="title.sub">天际行者 · 每一栋建筑都由种子生成</p>
+    <div class="diffs" id="diffs" role="radiogroup" data-i18n-aria="diff.aria" aria-label="难度选择">
+      <button class="diff" data-diff="easy" role="radio" aria-checked="false"><span data-i18n="diff.easy">简单</span><small data-i18n="diff.easy.short">EASY</small></button>
+      <button class="diff active" data-diff="normal" role="radio" aria-checked="true"><span data-i18n="diff.normal">中等</span><small data-i18n="diff.normal.short">NORMAL</small></button>
+      <button class="diff" data-diff="hard" role="radio" aria-checked="false"><span data-i18n="diff.hard">困难</span><small data-i18n="diff.hard.short">HARD</small></button>
     </div>
-    <button class="btn primary" id="btn-start">开始奔跑 <kbd>ENTER</kbd></button>
+    <button class="btn primary" id="btn-start"><span data-i18n="title.start">开始奔跑</span> <kbd>ENTER</kbd></button>
     <div class="controls">
-      <span><kbd>A</kbd><kbd>D</kbd> 移动</span>
-      <span><kbd>SPACE</kbd> 跳跃</span>
-      <span><kbd>ESC</kbd> 暂停</span>
-      <span><kbd>M</kbd> 声音</span>
+      <span><kbd>A</kbd><kbd>D</kbd> <span data-i18n="controls.move">移动</span></span>
+      <span><kbd>SPACE</kbd> <span data-i18n="controls.jump">跳跃</span></span>
+      <span><kbd>ESC</kbd> <span data-i18n="controls.pause">暂停</span></span>
+      <span><kbd>M</kbd> <span data-i18n="controls.sound">声音</span></span>
     </div>
     <div class="meta">
-      <span>SEED <b id="seed-label">—</b></span>
-      <span>BEST <b id="best-title">0</b></span>
-      <span>VER <b id="version">2.0.0</b></span>
-      <button class="sound-toggle" type="button" aria-pressed="true">SOUND ON</button>
+      <button class="seed-toggle" id="seed-btn" type="button" data-i18n-aria="meta.reseed" aria-label="换一个种子"><span data-i18n="meta.seed">种子</span> <b id="seed-label">—</b></button>
+      <span><span data-i18n="meta.best">最高</span> <b id="best-title">0</b></span>
+      <span><span data-i18n="meta.ver">版本</span> <b id="version">2.0.0</b></span>
+      <button class="lang-toggle" type="button" data-i18n-aria="lang.aria" aria-label="切换语言">EN</button>
+      <button class="sound-toggle" type="button" aria-pressed="true" data-i18n-aria="sound.aria" aria-label="音效开关">声音 开</button>
     </div>
   </section>
 
   <section class="panel hidden" id="panel-pause">
-    <div class="kicker">PAUSED</div>
-    <h2>暂停</h2>
-    <p class="sub">按 <kbd>ESC</kbd> 继续</p>
-    <button class="btn primary" id="btn-resume">继续 <kbd>ESC</kbd></button>
-    <button class="btn ghost" id="btn-quit">回到标题</button>
-    <button class="sound-toggle ghost" type="button" aria-pressed="true">SOUND ON</button>
+    <div class="kicker" data-i18n="pause.kicker">暂停</div>
+    <h2 data-i18n="pause.title">游戏暂停</h2>
+    <p class="sub"><span data-i18n="pause.hint">按</span> <kbd>ESC</kbd> <span data-i18n="pause.hint2">继续</span></p>
+    <button class="btn primary" id="btn-resume"><span data-i18n="pause.resume">继续</span> <kbd>ESC</kbd></button>
+    <button class="btn ghost" id="btn-quit" data-i18n="pause.quit">回到标题</button>
+    <button class="sound-toggle ghost" type="button" aria-pressed="true" data-i18n-aria="sound.aria" aria-label="音效开关">声音 开</button>
   </section>
 
   <section class="panel hidden" id="panel-over">
-    <div class="kicker danger">SIGNAL LOST</div>
-    <h2>本次结束</h2>
+    <div class="kicker danger" data-i18n="over.kicker">信号丢失</div>
+    <h2 data-i18n="over.title">本次结束</h2>
     <div class="results">
-      <div class="result"><span class="label">SCORE</span><b id="final-score">0</b></div>
-      <div class="result"><span class="label">DISTANCE</span><b id="final-dist">0 m</b></div>
-      <div class="result"><span class="label">BEST</span><b id="final-best">0</b></div>
+      <div class="result"><span class="label" data-i18n="hud.score">分数</span><b id="final-score">0</b></div>
+      <div class="result"><span class="label" data-i18n="hud.distance">距离</span><b id="final-dist">0 m</b></div>
+      <div class="result"><span class="label" data-i18n="meta.best">最高</span><b id="final-best">0</b></div>
     </div>
-    <button class="btn primary" id="btn-retry">再来一次 <kbd>ENTER</kbd></button>
-    <p class="seed-line">SEED <b id="final-seed">—</b> · <b id="final-diff">NORMAL</b></p>
+    <button class="btn primary" id="btn-retry"><span data-i18n="over.retry">再来一次</span> <kbd>ENTER</kbd></button>
+    <button class="btn ghost" id="btn-title" data-i18n="over.toTitle">回到标题</button>
+    <p class="seed-line"><span data-i18n="meta.seed">种子</span> <b id="final-seed">—</b> · <b id="final-diff">中等</b></p>
   </section>
 </div>
 
 <div id="touch" class="touch hidden">
-  <button class="tbtn pause" data-dir="pause" aria-label="暂停">❚❚</button>
-  <button class="tbtn" data-dir="left" aria-label="left">◀</button>
-  <button class="tbtn" data-dir="right" aria-label="right">▶</button>
-  <button class="tbtn jump" data-dir="jump" aria-label="jump">▲</button>
+  <button class="tbtn pause" data-dir="pause" data-i18n-aria="a11y.pause" aria-label="暂停">❚❚</button>
+  <button class="tbtn" data-dir="left" data-i18n-aria="touch.left" aria-label="左移">◀</button>
+  <button class="tbtn" data-dir="right" data-i18n-aria="touch.right" aria-label="右移">▶</button>
+  <button class="tbtn jump" data-dir="jump" data-i18n-aria="touch.jump" aria-label="跳跃">▲</button>
 </div>
 
 <div id="flash" class="flash"></div>

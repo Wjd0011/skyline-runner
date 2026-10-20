@@ -51,8 +51,6 @@ export const UI = {
 export const DIFFICULTIES = {
   easy: {
     id: 'easy',
-    label: '简单',
-    labelEn: 'EASY',
     hp: 4,
     walker: [0.08, 0.40],
     flyer: [0.08, 0.48],
@@ -62,8 +60,6 @@ export const DIFFICULTIES = {
   },
   normal: {
     id: 'normal',
-    label: '中等',
-    labelEn: 'NORMAL',
     hp: 3,
     walker: [0.16, 0.60],
     flyer: [0.16, 0.78],
@@ -73,8 +69,6 @@ export const DIFFICULTIES = {
   },
   hard: {
     id: 'hard',
-    label: '困难',
-    labelEn: 'HARD',
     hp: 2,
     walker: [0.26, 0.78],
     flyer: [0.26, 0.95],

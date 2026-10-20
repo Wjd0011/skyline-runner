@@ -100,12 +100,21 @@ test('a hazard costs a heart and respects i-frames (AC-F3-04)', () => {
   const p = g.player;
   const hp0 = p.hp;
 
-  g.world = { hazard: () => true, solid: () => false, ensure: () => {}, newChunks: [], removedChunks: [] };
+  g.world = {
+    hazard: () => true,
+    solid: () => false,
+    pad: () => false,
+    ensure: () => {},
+    newChunks: [],
+    removedChunks: [],
+  };
 
-  g.updateHazards();
+  // Drive the real update() path so deleting the updateHazards() call site
+  // fails this test, not just the helper in isolation.
+  g.update(DT, IDLE);
   assert.equal(p.hp, hp0 - 1);
 
-  g.updateHazards();
+  g.update(DT, IDLE);
   assert.equal(p.hp, hp0 - 1, 'i-frames did not block the second hit');
 });
 
@@ -146,13 +155,31 @@ test('distance advances with forward travel and never rewinds', () => {
 });
 
 test('spawned entities are shifted into world space (regression: orbs pooled at origin)', () => {
+  // Chunk 0 starts at x=0, so spawning it proves nothing: an entity left in
+  // chunk-local coordinates would still sit at a positive x. Use a later
+  // chunk and require every entity to land inside its own chunk window.
   const g = makeGame();
-  g.reset();
+  const CHUNK_PX = 24 * TILE;
+  const index = 5;
+  g.world.ensure(index * CHUNK_PX + 8);
+  const chunk = g.world.chunks.get(index);
+  assert.ok(chunk, `chunk ${index} was not streamed`);
+
+  g.enemies = [];
+  g.orbs = [];
+  g.spawnChunkEntities(chunk);
+
+  const lo = index * CHUNK_PX;
+  const hi = (index + 1) * CHUNK_PX;
+  assert.ok(g.orbs.length > 0, 'check chunk has no orbs');
+  assert.ok(g.enemies.length > 0, 'check chunk has no enemies');
   for (const o of g.orbs) {
-    const chunk = Math.floor(o.x / (24 * TILE));
-    assert.ok(o.x >= chunk * 24 * TILE - 1, `orb at ${o.x} is outside its chunk ${chunk}`);
+    assert.ok(o.x >= lo && o.x < hi, `orb at ${o.x} is outside chunk ${index} [${lo}, ${hi})`);
   }
   for (const e of g.enemies) {
-    assert.ok(e.x > 0, 'enemy spawned at the origin');
+    assert.ok(e.x >= lo && e.x < hi, `enemy at ${e.x} is outside chunk ${index} [${lo}, ${hi})`);
+    if (e.minX !== undefined) {
+      assert.ok(e.minX >= lo && e.maxX <= hi, `patrol span ${e.minX}..${e.maxX} escaped chunk ${index}`);
+    }
   }
 });

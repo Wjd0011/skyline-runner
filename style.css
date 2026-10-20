@@ -229,7 +229,8 @@ kbd {
 
 .meta b { color: var(--muted); font-weight: 500; }
 
-.sound-toggle {
+.sound-toggle,
+.lang-toggle {
   appearance: none;
   cursor: pointer;
   font-family: var(--mono);
@@ -239,9 +240,34 @@ kbd {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
+  min-width: 44px;
   min-height: 44px;
   padding: 0 14px;
 }
+
+.lang-toggle {
+  letter-spacing: 1px;
+}
+
+.seed-toggle {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 10px;
+  margin: -8px 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.seed-toggle:hover { color: var(--ink); border-color: var(--line); }
+.seed-toggle b { color: var(--cyan); }
 
 .sound-toggle:hover { color: var(--ink); border-color: rgba(34, 211, 238, 0.45); }
 
@@ -350,7 +376,7 @@ kbd {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
-  z-index: 16;
+  z-index: 24;
 }
 
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
@@ -436,7 +462,6 @@ kbd {
 :focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: 3px;
-  border-radius: 6px;
 }
 
 /* Pause lives above the jump button so one thumb covers both. */

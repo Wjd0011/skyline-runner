@@ -36,43 +36,96 @@ async function rect(page, selector) {
 async function fps(page, ms = FPS_WINDOW, keepAlive = false) {
   if (keepAlive) {
     // A 30 s sample must stay in gameplay; a random death would measure the
-    // game-over panel instead. Topping up hearts keeps the load realistic.
+    // game-over panel instead, and a paused page still renders (draw is called
+    // every frame) so fps alone cannot tell "running" from "frozen".
     await page.eval(`window.__keepAlive = setInterval(() => {
       const g = window.__skyline && __skyline.game;
       if (!g) return;
       if (g.state === 'over') __skyline.startRun();
+      else if (g.state === 'paused') __skyline.resumeRun();
       if (g.player) g.player.hp = g.player.maxHp;
     }, 100)`);
+    await page.waitFor("__skyline.game.state === 'playing'", { timeout: 5000 });
   }
-  const out = await page.eval(`new Promise((res) => {
-    let n = 0;
-    let draw = 0;
-    const t0 = performance.now();
-    function tick() {
-      n += 1;
-      draw += (window.__skyline && __skyline.renderer.lastDrawMs) || 0;
-      if (performance.now() - t0 < ${ms}) requestAnimationFrame(tick);
-      else res([
-        Math.round((n / (performance.now() - t0)) * 10000) / 10,
-        Math.round((draw / n) * 100) / 100,
-      ]);
-    }
-    requestAnimationFrame(tick);
-  })`, { awaitPromise: true, timeout: ms + 5000 });
-  if (keepAlive) await page.eval('clearInterval(window.__keepAlive)');
-  return out;
+  try {
+    const out = await page.eval(`new Promise((res) => {
+      let n = 0;
+      let playing = 0;
+      let draw = 0;
+      let samples = 0;
+      const draws = [];
+      const t0 = performance.now();
+      function tick() {
+        n += 1;
+        const g = window.__skyline && __skyline.game;
+        if (g && g.state === 'playing') playing += 1;
+        const d = window.__skyline && __skyline.renderer.lastDrawMs;
+        if (typeof d === 'number' && Number.isFinite(d)) {
+          samples += 1;
+          draw += d;
+          draws.push(d);
+        }
+        if (performance.now() - t0 < ${ms}) requestAnimationFrame(tick);
+        else {
+          draws.sort((a, b) => a - b);
+          res({
+            fps: Math.round((n / (performance.now() - t0)) * 10000) / 10,
+            mean: samples ? Math.round((draw / samples) * 100) / 100 : -1,
+            p95: draws.length ? Math.round(draws[Math.floor(draws.length * 0.95)] * 100) / 100 : -1,
+            max: draws.length ? Math.round(draws[draws.length - 1] * 100) / 100 : -1,
+            samples,
+            playingRatio: Math.round((playing / n) * 1000) / 1000,
+          });
+        }
+      }
+      requestAnimationFrame(tick);
+    })`, { awaitPromise: true, timeout: ms + 5000 });
+    return out;
+  } finally {
+    if (keepAlive) await page.eval('clearInterval(window.__keepAlive)');
+  }
 }
 
 async function runDesktop(browser) {
   console.log('\n--- desktop 1280x800 ---');
   const page = await browser.newPage();
   await page.init();
-  await page.goto(`${BASE}/?test=1&seed=E2E2026&diff=normal`);
+  await page.goto(`${BASE}/?test=1&seed=E2E2026&diff=normal&lang=en`);
 
   check('boot without page errors', page.errors.length === 0, page.errors.join(' | '));
+  check('the page is focused so keyboard tests measure live play', await page.eval('document.hasFocus()'), page.warnings.join(' | '));
   check('version is 2.0.0', (await page.eval('__skyline.version')) === '2.0.0');
   check('starts on the title screen', (await page.eval('__skyline.game.state')) === 'title');
   check('title screen shows the seed', (await page.eval("document.getElementById('seed-label').textContent")) === 'E2E2026');
+
+  // Enter on a focused control must not also fire the global "start run" —
+  // that used to start a run with the old difficulty and then swap it out.
+  await page.eval("document.querySelector('.diff[data-diff=\"easy\"]').focus()");
+  await page.press('Enter', { code: 'Enter', vk: 13, text: '\r' });
+  await sleep(150);
+  const afterEnter = await page.eval(`({
+    state: __skyline.game.state,
+    hud: document.getElementById('hud-diff').textContent,
+    overlayVisible: !document.getElementById('overlay').classList.contains('hidden'),
+    titleVisible: !document.getElementById('panel-title').classList.contains('hidden'),
+  })`);
+  check(
+    'Enter on a focused control fires only that control',
+    afterEnter.state === 'title' && afterEnter.hud === 'EASY' && afterEnter.overlayVisible && afterEnter.titleVisible,
+    JSON.stringify(afterEnter),
+  );
+  await page.eval("document.querySelector('.diff[data-diff=\"normal\"]').click()");
+
+  // Space must activate a focused button instead of being eaten as "jump".
+  const sound0 = await page.eval('__skyline.soundOn');
+  await page.eval("document.querySelector('#panel-title .sound-toggle').focus()");
+  await page.press(' ', { code: 'Space', vk: 32, text: ' ' });
+  await sleep(150);
+  const sound1 = await page.eval('__skyline.soundOn');
+  check('Space activates a focused button', sound0 !== sound1, `${sound0} -> ${sound1}`);
+  await page.press(' ', { code: 'Space', vk: 32, text: ' ' });
+  await sleep(100);
+  await page.eval('document.activeElement && document.activeElement.blur()');
 
   const [sw, iw] = await page.eval('[document.documentElement.scrollWidth, innerWidth]');
   check('no horizontal scroll on desktop', sw <= iw, `${sw} <= ${iw}`);
@@ -126,21 +179,39 @@ async function runDesktop(browser) {
   check('Escape resumes', true);
 
   await page.key('ArrowRight', { down: true, code: 'ArrowRight', vk: 39 });
-  const [f, drawMs] = await fps(page, FPS_WINDOW, true);
+  const perf = await fps(page, FPS_WINDOW, true);
   await page.key('ArrowRight', { down: false, code: 'ArrowRight', vk: 39 });
-  check(`desktop frame rate >= ${MIN_DESKTOP_FPS} fps`, f >= MIN_DESKTOP_FPS, `${f} fps, draw ${drawMs} ms`);
-  check('desktop render stays inside the 12 ms budget', drawMs <= 12, `${drawMs} ms`);
+  check(`desktop frame rate >= ${MIN_DESKTOP_FPS} fps`, perf.fps >= MIN_DESKTOP_FPS, `${perf.fps} fps`);
+  check(
+    'desktop render p95 inside the 12 ms budget',
+    perf.samples >= 50 && perf.p95 <= 12,
+    `p95 ${perf.p95} ms, max ${perf.max} ms over ${perf.samples} frames`,
+  );
+  check('the frame sample itself ran in gameplay', perf.playingRatio >= 0.9, `${(perf.playingRatio * 100).toFixed(1)}% of frames in gameplay`);
   await page.screenshot(join(ART, 'desktop-run.png'));
 
-  const logicMs = await page.eval(`(() => {
+  const logic = await page.eval(`(() => {
     const g = __skyline.game;
+    const before = { state: g.state, time: g.time };
     const input = { axis: 1, jumpHeld: false, jumpPressed: false };
     const t0 = performance.now();
     for (let i = 0; i < 240; i++) g.update(1 / 120, input);
-    return (performance.now() - t0) / 240;
+    return {
+      ms: (performance.now() - t0) / 240,
+      before,
+      after: { state: g.state, time: g.time },
+    };
   })()`);
-  check('simulation step stays inside the 3 ms logic budget', logicMs <= 3, `${logicMs.toFixed(3)} ms`);
+  check('simulation step stays inside the 3 ms logic budget', logic.ms <= 3, `${logic.ms.toFixed(3)} ms`);
+  // update() returns immediately unless the run is live, so a paused game
+  // would report ~0.00 ms for all 240 calls without advancing the clock.
+  check(
+    'the logic sample measured live updates',
+    logic.before.state === 'playing' && logic.after.state === 'playing' && logic.after.time - logic.before.time > 1.5,
+    JSON.stringify(logic),
+  );
 
+  const deathDist = await page.eval('__skyline.game.distance');
   await page.eval('(__skyline.game.score = 777, __skyline.game.player.hp = 1, __skyline.game.player.alive = false)');
   await page.waitFor("__skyline.game.state === 'over'");
   const over = await page.eval(`({
@@ -152,7 +223,18 @@ async function runDesktop(browser) {
   })`);
   check('game over panel shows the final score', over.score === '777', JSON.stringify(over));
   check('game over panel shows seed and difficulty', over.seed === 'E2E2026' && over.diff === 'NORMAL');
+  check('game over panel shows the distance reached', over.dist === `${new Intl.NumberFormat('en-US').format(deathDist)} m`, `${over.dist} vs ${deathDist} m`);
   check('best score recorded', over.best === '777');
+
+  // The over panel must not be a dead end: without a way back, the language
+  // and difficulty controls stay unreachable until a reload.
+  await page.eval("document.getElementById('btn-title').click()");
+  await page.waitFor("__skyline.game.state === 'title'");
+  check('the game over panel can return to the title screen', await page.eval("!document.getElementById('panel-title').classList.contains('hidden')"));
+  await page.eval('__skyline.startRun()');
+  await page.waitFor("__skyline.game.state === 'playing'");
+  await page.eval('(__skyline.game.player.hp = 0, __skyline.game.player.alive = false)');
+  await page.waitFor("__skyline.game.state === 'over'");
 
   await page.press('Enter', { code: 'Enter', vk: 13, text: '\r' });
   await page.waitFor("__skyline.game.state === 'playing'");
@@ -185,7 +267,7 @@ async function runDesktop(browser) {
 
   check('desktop session raised no errors', page.errors.length === 0, page.errors.join(' | '));
   await page.close();
-  return { fps: f, drawMs };
+  return { fps: perf.fps, p95: perf.p95, logic: logic.ms };
 }
 
 async function runMobile(browser) {
@@ -206,7 +288,7 @@ async function runMobile(browser) {
     const r = b.getBoundingClientRect();
     return [Math.round(r.width), Math.round(r.height)];
   })`);
-  check('every touch target is at least 44x44', sizes.every(([w, h]) => w >= 44 && h >= 44), JSON.stringify(sizes));
+  check('every touch target is at least 44x44', sizes.length === 4 && sizes.every(([w, h]) => w >= 44 && h >= 44), JSON.stringify(sizes));
   await page.screenshot(join(ART, 'mobile-title.png'));
 
   const start = await rect(page, '#btn-start');
@@ -223,8 +305,12 @@ async function runMobile(browser) {
   const y0 = await page.eval('__skyline.game.player.y');
   await page.touchHold(jump.x, jump.y, 200);
   await sleep(120);
-  const y1 = await page.eval('__skyline.game.player.y');
-  check('touch jump lifts the player', y1 < y0, `${y0.toFixed(1)} -> ${y1.toFixed(1)}`);
+  const jumpState = await page.eval('({ y: __skyline.game.player.y, vy: __skyline.game.player.vy, onGround: __skyline.game.player.onGround })');
+  check(
+    'touch jump lifts the player',
+    jumpState.y < y0 && (jumpState.vy < 0 || !jumpState.onGround),
+    `${y0.toFixed(1)} -> ${jumpState.y.toFixed(1)} vy ${jumpState.vy.toFixed(0)} onGround ${jumpState.onGround}`,
+  );
 
   const pause = await rect(page, '.tbtn[data-dir="pause"]');
   await page.touch(pause.x, pause.y);
@@ -236,9 +322,14 @@ async function runMobile(browser) {
   check('touch resume continues the run', true);
   await page.screenshot(join(ART, 'mobile-run.png'));
 
-  const [f, mDraw] = await fps(page, FPS_WINDOW, true);
-  check(`mobile frame rate >= ${MIN_MOBILE_FPS} fps`, f >= MIN_MOBILE_FPS, `${f} fps, draw ${mDraw} ms`);
-  check('mobile render stays inside the 12 ms budget', mDraw <= 12, `${mDraw} ms`);
+  const mPerf = await fps(page, FPS_WINDOW, true);
+  check(`mobile frame rate >= ${MIN_MOBILE_FPS} fps`, mPerf.fps >= MIN_MOBILE_FPS, `${mPerf.fps} fps`);
+  check(
+    'mobile render p95 inside the 12 ms budget',
+    mPerf.samples >= 50 && mPerf.p95 <= 12,
+    `p95 ${mPerf.p95} ms, max ${mPerf.max} ms over ${mPerf.samples} frames`,
+  );
+  check('the mobile frame sample itself ran in gameplay', mPerf.playingRatio >= 0.9, `${(mPerf.playingRatio * 100).toFixed(1)}% of frames in gameplay`);
 
   const hudOverlap = await page.eval(`(() => {
     const ids = ['hearts', 'hud-diff', 'score', 'dist'];
@@ -275,12 +366,80 @@ async function runMobile(browser) {
     return r.top >= -1 && r.bottom <= innerHeight + 1 && r.left >= -1 && r.right <= innerWidth + 1;
   })()`);
   check('title panel fits a 360x640 viewport', fits == true);
+  await page.eval("__skyline.startRun(), (__skyline.game.player.hp = 0, __skyline.game.player.alive = false)");
+  await page.waitFor("__skyline.game.state === 'over'");
+  const overFits = await page.eval(`(() => {
+    const r = document.getElementById('panel-over').getBoundingClientRect();
+    return r.top >= -1 && r.bottom <= innerHeight + 1;
+  })()`);
+  check('game over panel fits a 360x640 viewport', overFits == true);
   await page.screenshot(join(ART, 'mobile-360.png'));
 
   check('mobile session raised no errors', page.errors.length === 0, page.errors.join(' | '));
 
   await page.close();
-  return { fps: f, drawMs: mDraw };
+  return { fps: mPerf.fps, p95: mPerf.p95 };
+}
+
+async function runI18n(browser) {
+  console.log('\n--- i18n ---');
+  const page = await browser.newPage();
+  await page.init();
+  await page.goto(`${BASE}/?test=1&seed=LANG01`);
+  await page.eval('localStorage.clear()');
+  await page.goto(`${BASE}/?test=1&seed=LANG01`);
+
+  check('defaults to zh-CN (PRD 8.5)', (await page.eval('__skyline.locale')) === 'zh-CN');
+  check('document lang is zh-CN', (await page.eval('document.documentElement.lang')) === 'zh-CN');
+  const zhStart = await page.eval("document.querySelector('#btn-start [data-i18n]').textContent");
+  check('static copy ships in Chinese', zhStart === '开始奔跑', zhStart);
+
+  const leaks = await page.eval(`(() => {
+    const bad = [];
+    for (const el of document.querySelectorAll('[data-i18n]')) {
+      if (el.tagName === 'SMALL') continue;
+      const key = el.dataset.i18n;
+      const text = (el.textContent || '').trim();
+      if (!text || text === key || /\\{\\w+\\}/.test(text)) bad.push(key + '=' + text);
+    }
+    return bad;
+  })()`);
+  check('every localized node resolved to real copy', leaks.length === 0, JSON.stringify(leaks));
+
+  await page.eval("document.querySelector('.lang-toggle').click()");
+  const enStart = await page.eval("document.querySelector('#btn-start [data-i18n]').textContent");
+  check('the toggle relabels the UI in English', enStart === 'Start run', enStart);
+  check('html lang follows the switch', (await page.eval('document.documentElement.lang')) === 'en-US');
+  check('the tab title is localized', (await page.eval('document.title')).includes('neon'));
+  const diffLabel = await page.eval(`document.querySelector('[data-diff="normal"] [data-i18n]').textContent`);
+  check('difficulty labels are translated', diffLabel === 'Normal', diffLabel);
+
+  // The language toggle legitimately shows the target language ("中文").
+  const cjk = await page.eval(`(() => {
+    const bad = [];
+    const walk = (el) => {
+      for (const n of el.childNodes) {
+        if (n.nodeType === 3) {
+          if (/[\\u4e00-\\u9fff]/.test(n.nodeValue)) bad.push(n.nodeValue.trim());
+        } else if (n.nodeType === 1 && !n.classList.contains('lang-toggle')) {
+          const st = getComputedStyle(n);
+          if (st.display !== 'none' && st.visibility !== 'hidden') walk(n);
+        }
+      }
+    };
+    walk(document.body);
+    return bad;
+  })()`);
+  check('English mode leaves no Chinese copy on screen', cjk.length === 0, JSON.stringify(cjk));
+
+  await page.goto(`${BASE}/?test=1&seed=LANG01`);
+  check('the language choice persists across reloads', (await page.eval('__skyline.locale')) === 'en-US');
+
+  await page.goto(`${BASE}/?test=1&seed=LANG01&lang=zh-CN`);
+  check('?lang= overrides the stored choice', (await page.eval('__skyline.locale')) === 'zh-CN');
+
+  check('i18n session raised no errors', page.errors.length === 0, page.errors.join(' | '));
+  await page.close();
 }
 
 async function runNetworkProfile(browser) {
@@ -300,6 +459,15 @@ async function runNetworkProfile(browser) {
     const n = performance.getEntriesByType('navigation')[0];
     return n ? Math.round(n.domContentLoadedEventEnd) : -1;
   })()`);
+  // A browser that accepts but ignores the throttle would report a ~100 ms
+  // localhost DCL and pass the budget for the wrong reason.
+  const rtt = await page.eval(`(() => {
+    const slowest = performance.getEntriesByType('resource')
+      .map((r) => r.responseEnd - r.requestStart)
+      .filter((ms) => Number.isFinite(ms));
+    return slowest.length ? Math.round(Math.max(...slowest)) : -1;
+  })()`);
+  check('the network throttle is actually in effect', rtt >= 100, `slowest resource took ${rtt} ms`);
   check('interactive within 3 s on slow 4G (AC-F6-04)', dcl > 0 && dcl <= 3000, `${dcl} ms to DCL`);
   check('slow-network session raised no errors', page.errors.length === 0, page.errors.join(' | '));
   await page.close();
@@ -336,6 +504,7 @@ try {
   desktops = await runDesktop(browser);
   mobiles = await runMobile(browser);
   await runReducedMotion(browser);
+  await runI18n(browser);
   await runNetworkProfile(browser);
 } catch (err) {
   console.error('\nE2E aborted:', err);
@@ -348,7 +517,7 @@ try {
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 if (desktops) {
-  console.log(`desktop ${desktops.fps} fps (draw ${desktops.drawMs} ms), mobile ${mobiles ? `${mobiles.fps} fps (draw ${mobiles.drawMs} ms)` : 'n/a'}`);
+  console.log(`desktop ${desktops.fps} fps (p95 draw ${desktops.p95} ms, logic ${desktops.logic.toFixed(3)} ms), mobile ${mobiles ? `${mobiles.fps} fps (p95 draw ${mobiles.p95} ms)` : 'n/a'}`);
 }
 if (failed.length) {
   console.log('\nFailures:');

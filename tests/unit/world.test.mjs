@@ -60,7 +60,13 @@ test('every 4+ tile building has a reachable 2-wide balcony at <=96 px (AC-F2-02
         const by = c.groundY - 3;
         assert.equal(c.map[by * CHUNK_W + bx], LEDGE, `${label} chunk ${c.index}: balcony missing at ${bx}`);
         assert.equal(c.map[by * CHUNK_W + bx + 1], LEDGE, `${label} chunk ${c.index}: balcony is not 2 wide`);
-        assert.ok((c.groundY - by) * TILE <= 96, 'balcony higher than 96 px');
+        // Measure the height by walking up the column: hard-coding `by` above
+        // would make this assertion a constant (96 <= 96).
+        let row = c.groundY;
+        while (row > c.groundY - 10 && c.map[row * CHUNK_W + bx] !== LEDGE) row -= 1;
+        assert.equal(row, by, `${label} chunk ${c.index}: balcony found at row ${row}, expected ${by}`);
+        const heightPx = (c.groundY - row) * TILE;
+        assert.ok(heightPx > 0 && heightPx <= 96, `balcony sits ${heightPx} px above the street`);
         // the tile in front of the balcony must be open street, otherwise
         // the balcony cannot be reached from the ground at all
         assert.equal(
@@ -134,13 +140,17 @@ test('drones never spawn inside a tower (AC-F3-06)', () => {
 });
 
 test('canyon width is always 2-3 tiles (AC-F2-04)', () => {
+  let canyons = 0;
   for (const label of SEEDS) {
     for (const c of chunks(label, 40)) {
       for (const g of c.gaps) {
+        canyons += 1;
         assert.ok(g.width >= 2 && g.width <= 3, `${label} chunk ${c.index}: canyon width ${g.width}`);
       }
     }
   }
+  // Without this, an empty gaps array would make the whole test vacuous.
+  assert.ok(canyons > 300, `expected many canyons, saw ${canyons}`);
 });
 
 test('first 96 m are enemy-free and spike-free on all difficulties (AC-F4-02)', () => {
@@ -186,7 +196,7 @@ test('sampled enemy density tracks the ramp across four distance bands (AC-F4-03
     [700, 1200],
   ];
   const counts = bands.map(() => 0);
-  const meters = bands.map(([a, b]) => b - a);
+  const bandChunks = bands.map(() => 0);
   const labels = Array.from({ length: 24 }, (_, i) => `BAND${i}`);
 
   for (const label of labels) {
@@ -194,16 +204,19 @@ test('sampled enemy density tracks the ramp across four distance bands (AC-F4-03
     for (let i = 0; i < 26; i++) {
       const c = w.generate(i);
       const startM = i * CHUNK_M;
+      const k = bands.findIndex(([a, b]) => startM >= a && startM < b);
+      if (k < 0) continue;
+      bandChunks[k] += 1;
       for (const s of c.spawns) {
         if (s.type !== 'walker' && s.type !== 'flyer') continue;
-        bands.forEach(([a, b], k) => {
-          if (startM >= a && startM < b) counts[k] += 1;
-        });
+        counts[k] += 1;
       }
     }
   }
 
-  const rates = counts.map((n, k) => n / meters[k] / labels.length);
+  // Normalise by the metres actually sampled, not by the nominal band width:
+  // chunks are assigned by their start, so band 0 covers 192 m rather than 154.
+  const rates = counts.map((n, k) => n / (bandChunks[k] * CHUNK_M));
   // The pressure ramp saturates at 600 m, so bands 3 and 4 share the same
   // expected density. A 24-seed sample is Poisson-noisy (~5% sd) and may
   // dip a few percent; the exact invariant above pins the curve, and this
@@ -231,20 +244,34 @@ test('ten different seeds produce ten different skylines (AC-F2-06)', () => {
 
 test('chunk generation stays under the 2 ms budget (AC-F2-05)', () => {
   const w = new World(seedInt('BENCH'), DIFFICULTIES.normal);
-  const N = 400;
-  const t0 = performance.now();
-  for (let i = 0; i < N; i++) w.generate(i);
-  const perChunk = (performance.now() - t0) / N;
-  assert.ok(perChunk < 2, `generation took ${perChunk.toFixed(3)} ms/chunk`);
+  for (let i = 0; i < 64; i++) w.generate(i); // warm up JIT and caches
+  const runs = [];
+  for (let r = 0; r < 5; r++) {
+    const t0 = performance.now();
+    for (let i = 0; i < 100; i++) w.generate(1000 + r * 100 + i);
+    runs.push((performance.now() - t0) / 100);
+  }
+  runs.sort((a, b) => a - b);
+  const median = runs[2];
+  assert.ok(median < 2, `median generation took ${median.toFixed(3)} ms/chunk`);
 });
 
 test('streaming a 3000 m run keeps memory bounded (TC-10)', () => {
   const w = new World(seedInt('LONGHAUL'), DIFFICULTIES.normal);
   let maxChunks = 0;
+  const visited = new Set();
+  let streams = 0;
   for (let px = 0; px <= 3000 * 16; px += 64) {
     w.ensure(px);
     maxChunks = Math.max(maxChunks, w.chunks.size);
+    for (const key of w.chunks.keys()) visited.add(key);
+    if (w.newChunks.length) streams += w.newChunks.length;
     if (w.newChunks.length) w.newChunks.length = 0;
   }
+  // `maxChunks <= 7` alone passes when ensure() is a no-op (size 0), so also
+  // require that the window actually moved through many chunks.
+  assert.ok(visited.size > 50, `only ${visited.size} chunks were ever streamed`);
+  assert.ok(streams > 50, `only ${streams} chunk spawn events`);
+  assert.ok(maxChunks >= 4, `window never loaded (peak ${maxChunks})`);
   assert.ok(maxChunks <= 7, `window grew to ${maxChunks} chunks`);
 });

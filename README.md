@@ -2,12 +2,15 @@
 
 A neon skyline platformer where every building is procedurally generated from a seed — and the drones are hunting you.
 
+**v2.0.0** · [release notes](docs/RELEASE-v2.0.0.md)
+
 **▶ Play in your browser:** https://wjd0011.github.io/skyline-runner/
 
 [![Play](https://img.shields.io/badge/PLAY-skyline--runner-161B22?style=for-the-badge&logo=googlechrome&logoColor=22D3EE)](https://wjd0011.github.io/skyline-runner/)
+![Release](https://img.shields.io/badge/release-v2.0.0-161B22?style=flat-square&logo=github&logoColor=22D3EE)
 ![No dependencies](https://img.shields.io/badge/dependencies-0-161B22?style=flat-square&logo=javascript&logoColor=7DD3FC)
 ![Canvas 2D](https://img.shields.io/badge/render-Canvas%202D-161B22?style=flat-square&logo=html5&logoColor=A78BFA)
-![Tests](https://img.shields.io/badge/tests-41%20unit%20%2B%2050%20e2e-161B22?style=flat-square&logo=nodedotjs&logoColor=34D399)
+![Tests](https://img.shields.io/badge/tests-51%20unit%20%2B%2072%20e2e-161B22?style=flat-square&logo=nodedotjs&logoColor=34D399)
 ![License](https://img.shields.io/badge/license-MIT-161B22?style=flat-square&logo=opensourceinitiative&logoColor=34D399)
 
 ![Gameplay](docs/preview.png)
@@ -33,8 +36,13 @@ A neon skyline platformer where every building is procedurally generated from a 
 | Sound | `M` or the SOUND toggle | same |
 | Difficulty | `1` / `2` / `3` or the title-screen buttons | same |
 | New seed | click the seed on the title screen | same |
+| Language | the `EN` / `中文` toggle | same |
 
 Hold jump longer to jump higher. You have three hearts — contact costs one and grants brief invulnerability.
+
+## Languages
+
+The UI ships in **zh-CN by default** and in **en-US**, switchable from the title screen or with `?lang=en` / `?lang=zh-CN` in the URL. The choice persists; every string lives in [`src/i18n.js`](src/i18n.js) and is bound through `data-i18n` attributes, so nothing is hardcoded in the render path. Numbers and distances go through `Intl.NumberFormat`.
 
 ## Difficulty
 
@@ -59,13 +67,15 @@ src/
   scoring.js    orb + stomp values and the combo window
   render.js     parallax skyline, synthwave sun, buildings, neon, particles, post FX
   audio.js      WebAudio synth SFX (no audio files)
+  i18n.js       zh-CN / en-US copy and the interpolation helpers
   rng.js        mulberry32 + hashing for deterministic generation
   config.js     physics tuning and palette
 tests/
-  unit/         generator invariants, physics, scoring, AI (node:test, no deps)
-  cdp.mjs       ~260-line Chrome DevTools Protocol client (no Puppeteer)
-  e2e.mjs       real-browser keyboard / touch / network / perf checks
-  server.mjs    tiny static server used by the E2E run
+  unit/         generator invariants, physics, scoring, AI, i18n (node:test, no deps)
+  cdp.mjs       ~280-line Chrome DevTools Protocol client (no Puppeteer)
+  e2e.mjs       real-browser keyboard / touch / network / perf / locale checks
+  memory.mjs    five-minute heap-growth soak (PRD 8.1)
+  server.mjs    tiny static server used by the browser suites
 tools/
   metrics.mjs   prints the generator numbers quoted in the test report
 ```
@@ -83,10 +93,11 @@ tools/
 Zero-dependency test suites; the browser suite drives a real Chromium through CDP instead of mocking the DOM.
 
 ```bash
-npm test                # 41 unit / property tests
-npm run test:e2e        # 50 real-browser checks (needs Chrome or Edge)
+npm test                # 51 unit / property tests
+npm run test:e2e        # 72 real-browser checks (needs Chrome or Edge)
 LONG=1 npm run test:e2e # same, with the 30 s performance window the SLO uses
 SOFTWARE=1 npm run test:e2e   # GPU-less CI: software raster, lower fps bar
+npm run test:memory     # 5-minute heap soak (PRD 8.1)
 node tools/metrics.mjs 24     # generator statistics
 ```
 
@@ -94,16 +105,17 @@ Measured on the reference machine (Edge headless, GTX 1650):
 
 | | Result |
 | --- | --- |
-| Unit / property tests | 41 / 41 |
-| Browser E2E checks | 50 / 50 |
+| Unit / property tests | 51 / 51 |
+| Browser E2E checks | 72 / 72 |
+| Heap growth over 5 min | +0.07 MB, peak +0.17 MB (budget 30 MB, 158 m -> 1934 m run) |
 | Desktop frame rate | 60.0 fps over 30 s, draw 1.65 ms |
 | Mobile 390×844 | 60.0 fps over 30 s, draw 0.98 ms |
 | Simulation step | 0.002 ms (budget 3 ms) |
 | Chunk generation | 0.005 ms (budget 2 ms) |
-| First interactive on Slow-4G | 1027 ms (budget 3000 ms) |
-| First-load payload | 25.9 KB gzipped (budget 120 KB) |
+| First interactive on Slow-4G | 1064 ms (budget 3000 ms) |
+| First-load payload | 28.8 KB gzipped (budget 120 KB) |
 
-Full AC-by-AC traceability and the defect list live in [docs/TEST-REPORT-v2.0.md](docs/TEST-REPORT-v2.0.md). The spec is [docs/SKYLINE-RUNNER-PRD-v2.0.docx](docs/SKYLINE-RUNNER-PRD-v2.0.docx).
+Full AC-by-AC traceability and the defect list live in [docs/TEST-REPORT-v2.0.md](docs/TEST-REPORT-v2.0.md). The spec is [docs/SKYLINE-RUNNER-PRD-v2.0.docx](docs/SKYLINE-RUNNER-PRD-v2.0.docx). The release notes (positioning, review and verification records) are in [docs/RELEASE-v2.0.0.md](docs/RELEASE-v2.0.0.md), and every accepted review finding is logged in [docs/CODE-REVIEW-v2.0.md](docs/CODE-REVIEW-v2.0.md).
 
 ## Accessibility
 
@@ -132,8 +144,8 @@ Chromium (Chrome / Edge) is tested. Firefox and Safari are expected to work — 
 - [ ] Rooftop modifiers: moving platforms, collapsing cranes
 - [ ] Daily challenge seeds and a local leaderboard
 - [ ] Gamepad support
-- [ ] i18n layer (zh-CN default, en-US reserve) and full a11y sweep
 - [ ] Real-device perf matrix (mid-range Android, iPhone)
+- [ ] Mother-tongue review of the en-US copy
 
 ## License
 

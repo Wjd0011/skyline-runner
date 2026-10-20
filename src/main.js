@@ -4,6 +4,7 @@ import { Audio } from './audio.js';
 import { seedToInt, randomSeed } from './rng.js';
 import { DIFFICULTIES, DEFAULT_DIFFICULTY, VERSION } from './config.js';
 import { FixedStep } from './loop.js';
+import { t, applyStatic, setLocale, getLocale, fmtInt, normalizeLocale, DEFAULT_LOCALE } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,6 +19,7 @@ let seedInt = seedToInt(seedLabel);
 const DIFF_KEY = 'skyline-runner.diff.v1';
 const BEST_KEY = 'skyline-runner.best.v2';
 const SOUND_KEY = 'skyline-runner.sound.v1';
+const LANG_KEY = 'skyline-runner.lang.v1';
 
 // Private-mode browsers throw on setItem; fall back to memory so the game
 // still runs and the score simply does not survive a refresh (PRD F5).
@@ -44,6 +46,10 @@ if (!DIFFICULTIES[difficulty]) difficulty = DEFAULT_DIFFICULTY;
 let soundOn = store.getItem(SOUND_KEY) !== '0';
 audio.enabled = soundOn;
 
+// Language: ?lang= wins for a session (shareable links), then the last choice,
+// then the zh-CN default required by PRD 8.5.
+let locale = normalizeLocale(params.get('lang')) || normalizeLocale(store.getItem(LANG_KEY)) || DEFAULT_LOCALE;
+
 function bestStorageKey(d) {
   return `${BEST_KEY}.${d}`;
 }
@@ -58,7 +64,7 @@ let game = makeGame();
 function makeGame() {
   const g = new Game(renderer, audio, seedInt, seedLabel, DIFFICULTIES[difficulty]);
   g.onOver = onGameOver;
-  g.onMilestone = (meters) => toast(`${meters} m`, 800);
+  g.onMilestone = (meters) => toast(t('toast.milestone', { m: fmtInt(meters) }), 800);
   return g;
 }
 
@@ -73,6 +79,16 @@ const RIGHT = new Set(['ArrowRight', 'd', 'D']);
 const JUMP = new Set([' ', 'Spacebar', 'ArrowUp', 'w', 'W']);
 
 window.addEventListener('keydown', (e) => {
+  // Never swallow browser shortcuts (Ctrl+D, Cmd+P, ...).
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  // A focused control owns Enter/Space: the browser turns those into a click,
+  // and acting on them here as well would run two actions at once.
+  const onControl = !!(e.target instanceof Element && e.target.closest('button, a[href], [role="radio"]'));
+
+  // Space activates a focused button on keyup, so consuming it here would kill
+  // keyboard activation for every control in the UI. Arrow/W jumps still work.
+  if ((e.key === ' ' || e.key === 'Spacebar') && onControl) return;
+
   if (LEFT.has(e.key)) { keys.left = true; e.preventDefault(); }
   else if (RIGHT.has(e.key)) { keys.right = true; e.preventDefault(); }
   else if (JUMP.has(e.key)) {
@@ -80,10 +96,13 @@ window.addEventListener('keydown', (e) => {
     keys.jump = true;
     e.preventDefault();
   } else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+    if (e.repeat) return;
     togglePause();
   } else if (e.key === 'm' || e.key === 'M') {
+    if (e.repeat) return;
     toggleSound();
   } else if (e.key === 'Enter') {
+    if (onControl) return; // the control's own click handler runs instead
     if (game.state === 'title' || game.state === 'over') startRun();
     else if (game.state === 'paused') resumeRun();
   } else if (e.key === '1' || e.key === '2' || e.key === '3') {
@@ -123,11 +142,15 @@ const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in win
 function bindTouch() {
   for (const btn of touchWrap.querySelectorAll('.tbtn')) {
     const dir = btn.dataset.dir;
+    if (dir === 'pause') {
+      // click fires for both tap and keyboard activation, pointerdown does not
+      btn.addEventListener('click', (e) => { e.preventDefault(); togglePause(); });
+      continue;
+    }
     const down = (e) => {
       e.preventDefault();
       if (dir === 'left') keys.left = true;
       else if (dir === 'right') keys.right = true;
-      else if (dir === 'pause') togglePause();
       else { if (!keys.jump) loop.pressJump(); keys.jump = true; }
     };
     const up = (e) => {
@@ -167,11 +190,15 @@ function showPanel(name) {
   overlay.classList.remove('hidden');
   for (const [k, el] of Object.entries(panels)) el.classList.toggle('hidden', k !== name);
   hud.classList.add('hidden');
+  // The touch pad sits under the overlay's scrim. `inert` keeps it visible but
+  // takes its four buttons out of the tab order and out of reach of taps.
+  if (isTouch) touchWrap.inert = true;
 }
 
 function hideOverlay() {
   overlay.classList.add('hidden');
   hud.classList.remove('hidden');
+  if (isTouch) touchWrap.inert = false;
 }
 
 let toastTimer = 0;
@@ -185,15 +212,15 @@ function toast(text, ms = 1200) {
 
 function updateHud() {
   const p = game.player;
-  scoreEl.textContent = String(game.score);
-  distEl.textContent = String(game.distance);
+  scoreEl.textContent = fmtInt(game.score);
+  distEl.textContent = fmtInt(game.distance);
   for (let i = 0; i < heartsEl.children.length; i++) {
     heartsEl.children[i].classList.toggle('off', i >= p.hp);
   }
   // Hearts are colour-coded; keep a text equivalent for assistive tech.
   if (p.hp !== lastHp) {
     lastHp = p.hp;
-    heartsEl.setAttribute('aria-label', `生命 ${p.hp}/${p.maxHp}`);
+    heartsEl.setAttribute('aria-label', t('a11y.hearts', { hp: p.hp, max: p.maxHp }));
   }
 }
 
@@ -201,7 +228,7 @@ function updateHud() {
 
 function applySoundUi() {
   for (const btn of document.querySelectorAll('.sound-toggle')) {
-    btn.textContent = soundOn ? 'SOUND ON' : 'SOUND OFF';
+    btn.textContent = soundOn ? t('sound.on') : t('sound.off');
     btn.setAttribute('aria-pressed', String(soundOn));
   }
 }
@@ -217,13 +244,15 @@ function toggleSound() {
 // ---------------------------------------------------------------- difficulty
 
 function syncDifficultyUi() {
-  const d = DIFFICULTIES[difficulty];
   for (const btn of $('diffs').querySelectorAll('.diff')) {
     btn.classList.toggle('active', btn.dataset.diff === difficulty);
     btn.setAttribute('aria-checked', String(btn.dataset.diff === difficulty));
   }
-  $('hud-diff').textContent = d.labelEn;
-  $('best-title').textContent = String(readBest(difficulty));
+  const hudDiff = $('hud-diff');
+  hudDiff.textContent = t(`diff.${difficulty}.code`);
+  hudDiff.dataset.diff = difficulty;
+  $('final-diff').textContent = t(`diff.${difficulty}.code`);
+  $('best-title').textContent = fmtInt(readBest(difficulty));
   $('seed-label').textContent = seedLabel;
   $('version').textContent = `v${VERSION}`;
 }
@@ -236,7 +265,7 @@ function setDifficulty(id) {
   buildHearts(DIFFICULTIES[id].hp);
   syncDifficultyUi();
   audio.start();
-  toast(`${DIFFICULTIES[id].label} ${DIFFICULTIES[id].labelEn}`, 900);
+  toast(t('toast.diff', { name: t(`diff.${id}`) }), 900);
 }
 
 for (const btn of $('diffs').querySelectorAll('.diff')) {
@@ -247,6 +276,29 @@ for (const btn of document.querySelectorAll('.sound-toggle')) {
   btn.addEventListener('click', toggleSound);
 }
 
+// ---------------------------------------------------------------- language
+
+const langBtn = document.querySelector('.lang-toggle');
+
+function applyLocale() {
+  setLocale(locale);
+  applyStatic();
+  applySoundUi();
+  syncDifficultyUi();
+  if (langBtn) langBtn.textContent = t('lang.switchTo');
+  lastHp = -1; // force the hearts label to re-render in the new locale
+  if (game.player) updateHud();
+}
+
+function toggleLang() {
+  locale = locale === 'zh-CN' ? 'en-US' : 'zh-CN';
+  store.setItem(LANG_KEY, locale);
+  applyLocale();
+  toast(t('toast.lang', { name: t(`lang.name.${locale}`) }), 1400);
+}
+
+if (langBtn) langBtn.addEventListener('click', toggleLang);
+
 // ---------------------------------------------------------------- flow
 
 function startRun() {
@@ -256,17 +308,20 @@ function startRun() {
   game.reset();
   game.start();
   buildHearts(game.player.maxHp);
-  $('hud-diff').textContent = DIFFICULTIES[difficulty].labelEn;
+  $('hud-diff').textContent = t(`diff.${difficulty}.code`);
   hideOverlay();
-  toast('A / D 移动 · SPACE 跳跃', 1800);
+  toast(t('toast.controls'), 1800);
 }
 
 function pauseRun() {
   if (game.state !== 'playing') return;
   game.pause();
-  releaseInput();
+  // Only drop the latched jump. Clearing the held keys here would strand a
+  // finger that is still on a touch button, because no second pointerdown
+  // arrives after resume.
+  loop.clear();
   showPanel('pause');
-  toast('PAUSED');
+  toast(t('toast.paused'));
 }
 
 function resumeRun() {
@@ -287,30 +342,34 @@ function onGameOver(score, distance) {
   if (score > prev) store.setItem(key, String(score));
   const best = Math.max(prev, score);
 
-  $('final-score').textContent = String(score);
-  $('final-dist').textContent = `${distance} m`;
-  $('final-best').textContent = String(best);
+  $('final-score').textContent = fmtInt(score);
+  $('final-dist').textContent = `${fmtInt(distance)} ${t('hud.unit')}`;
+  $('final-best').textContent = fmtInt(best);
   $('final-seed').textContent = seedLabel;
-  $('final-diff').textContent = DIFFICULTIES[difficulty].labelEn;
+  $('final-diff').textContent = t(`diff.${difficulty}.code`);
   showPanel('over');
 }
 
 $('btn-start').addEventListener('click', startRun);
-$('btn-retry').addEventListener('click', startRun);
-$('btn-resume').addEventListener('click', resumeRun);
-$('btn-quit').addEventListener('click', () => {
+function backToTitle() {
   loop.clear();
   game.reset();
   syncDifficultyUi();
   showPanel('title');
-});
+}
 
-$('seed-label').addEventListener('click', () => {
+$('btn-retry').addEventListener('click', startRun);
+$('btn-resume').addEventListener('click', resumeRun);
+$('btn-quit').addEventListener('click', backToTitle);
+$('btn-title').addEventListener('click', backToTitle);
+
+$('seed-btn').addEventListener('click', () => {
   seedLabel = randomSeed();
   seedInt = seedToInt(seedLabel);
   $('seed-label').textContent = seedLabel;
   game = makeGame();
   game.cam.x = 0;
+  toast(t('toast.seed', { seed: seedLabel }), 1200);
 });
 
 // ---------------------------------------------------------------- loop
@@ -348,8 +407,7 @@ function frame(now) {
 
 // init
 buildHearts(DIFFICULTIES[difficulty].hp);
-syncDifficultyUi();
-applySoundUi();
+applyLocale();
 showPanel('title');
 requestAnimationFrame(frame);
 
@@ -363,11 +421,13 @@ if (params.has('test')) {
     get soundOn() { return soundOn; },
     get storage() { return store; },
     get renderer() { return renderer; },
+    get locale() { return getLocale(); },
     startRun,
     pauseRun,
     resumeRun,
     setDifficulty,
     toggleSound,
+    toggleLang,
     version: VERSION,
   };
 }
