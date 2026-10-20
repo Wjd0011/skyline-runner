@@ -85,6 +85,7 @@ Zero-dependency test suites; the browser suite drives a real Chromium through CD
 ```bash
 npm test                # 41 unit / property tests
 npm run test:e2e        # 50 real-browser checks (needs Chrome or Edge)
+LONG=1 npm run test:e2e # same, with the 30 s performance window the SLO uses
 SOFTWARE=1 npm run test:e2e   # GPU-less CI: software raster, lower fps bar
 node tools/metrics.mjs 24     # generator statistics
 ```
@@ -95,11 +96,12 @@ Measured on the reference machine (Edge headless, GTX 1650):
 | --- | --- |
 | Unit / property tests | 41 / 41 |
 | Browser E2E checks | 50 / 50 |
-| Desktop frame rate | 60.1 fps, draw 1.56 ms |
-| Mobile 390×844 | 60.2 fps, draw 1.05 ms |
+| Desktop frame rate | 60.0 fps over 30 s, draw 1.65 ms |
+| Mobile 390×844 | 60.0 fps over 30 s, draw 0.98 ms |
 | Simulation step | 0.002 ms (budget 3 ms) |
 | Chunk generation | 0.005 ms (budget 2 ms) |
 | First interactive on Slow-4G | 1027 ms (budget 3000 ms) |
+| First-load payload | 25.9 KB gzipped (budget 120 KB) |
 
 Full AC-by-AC traceability and the defect list live in [docs/TEST-REPORT-v2.0.md](docs/TEST-REPORT-v2.0.md). The spec is [docs/SKYLINE-RUNNER-PRD-v2.0.docx](docs/SKYLINE-RUNNER-PRD-v2.0.docx).
 

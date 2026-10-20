@@ -10,6 +10,9 @@ const CDP_PORT = Number(process.env.CDP_PORT || 9333);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ART = join(process.cwd(), 'tests', 'artifacts');
 const SOFTWARE = process.env.SOFTWARE === '1';
+// LONG=1 measures the 30 s window the PRD's SLO is defined over.
+const LONG = process.env.LONG === '1';
+const FPS_WINDOW = LONG ? 30000 : 2500;
 const MIN_DESKTOP_FPS = SOFTWARE ? 24 : 55;
 const MIN_MOBILE_FPS = SOFTWARE ? 24 : 50;
 
@@ -30,8 +33,18 @@ async function rect(page, selector) {
   })()`);
 }
 
-async function fps(page, ms = 2000) {
-  return page.eval(`new Promise((res) => {
+async function fps(page, ms = FPS_WINDOW, keepAlive = false) {
+  if (keepAlive) {
+    // A 30 s sample must stay in gameplay; a random death would measure the
+    // game-over panel instead. Topping up hearts keeps the load realistic.
+    await page.eval(`window.__keepAlive = setInterval(() => {
+      const g = window.__skyline && __skyline.game;
+      if (!g) return;
+      if (g.state === 'over') __skyline.startRun();
+      if (g.player) g.player.hp = g.player.maxHp;
+    }, 100)`);
+  }
+  const out = await page.eval(`new Promise((res) => {
     let n = 0;
     let draw = 0;
     const t0 = performance.now();
@@ -45,7 +58,9 @@ async function fps(page, ms = 2000) {
       ]);
     }
     requestAnimationFrame(tick);
-  })`, { awaitPromise: true });
+  })`, { awaitPromise: true, timeout: ms + 5000 });
+  if (keepAlive) await page.eval('clearInterval(window.__keepAlive)');
+  return out;
 }
 
 async function runDesktop(browser) {
@@ -111,7 +126,7 @@ async function runDesktop(browser) {
   check('Escape resumes', true);
 
   await page.key('ArrowRight', { down: true, code: 'ArrowRight', vk: 39 });
-  const [f, drawMs] = await fps(page, 2500);
+  const [f, drawMs] = await fps(page, FPS_WINDOW, true);
   await page.key('ArrowRight', { down: false, code: 'ArrowRight', vk: 39 });
   check(`desktop frame rate >= ${MIN_DESKTOP_FPS} fps`, f >= MIN_DESKTOP_FPS, `${f} fps, draw ${drawMs} ms`);
   check('desktop render stays inside the 12 ms budget', drawMs <= 12, `${drawMs} ms`);
@@ -221,7 +236,7 @@ async function runMobile(browser) {
   check('touch resume continues the run', true);
   await page.screenshot(join(ART, 'mobile-run.png'));
 
-  const [f, mDraw] = await fps(page, 2000);
+  const [f, mDraw] = await fps(page, FPS_WINDOW, true);
   check(`mobile frame rate >= ${MIN_MOBILE_FPS} fps`, f >= MIN_MOBILE_FPS, `${f} fps, draw ${mDraw} ms`);
   check('mobile render stays inside the 12 ms budget', mDraw <= 12, `${mDraw} ms`);
 

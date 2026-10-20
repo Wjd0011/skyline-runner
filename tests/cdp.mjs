@@ -151,7 +151,7 @@ export class Page {
     }
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeout = 20000) {
     const id = ++this.id;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -161,7 +161,7 @@ export class Page {
           this.pending.delete(id);
           reject(new Error(`timeout: ${method}`));
         }
-      }, 20000);
+      }, timeout);
     });
   }
 
@@ -193,13 +193,13 @@ export class Page {
     await sleep(250);
   }
 
-  async eval(expression, { awaitPromise = false } = {}) {
+  async eval(expression, { awaitPromise = false, timeout = 20000 } = {}) {
     const res = await this.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
       awaitPromise,
       userGesture: true,
-    });
+    }, awaitPromise ? timeout + 5000 : timeout);
     if (res.exceptionDetails) {
       throw new Error(res.exceptionDetails.exception?.description || res.exceptionDetails.text);
     }
