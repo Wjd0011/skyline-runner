@@ -4,7 +4,7 @@
 | --- | --- |
 | 被测版本 | 2.0.0（PRD v2.0 的 F1–F6 六项 Must） |
 | 测试日期 | 2026-10-20 |
-| 结论 | **41 条单元/属性测试 + 50 条浏览器端到端检查全部通过；34 条验收标准（AC）全部有对应用例并通过** |
+| 结论 | **51 条单元/属性测试 + 72 条浏览器端到端检查全部通过；34 条验收标准（AC）全部有对应用例并通过；5 分钟长跑堆增长 +0.07 MB（预算 30 MB）** |
 | 报告日期 | 2026-10-20 |
 
 本文档对应 `docs/SKYLINE-RUNNER-PRD-v2.0.docx` 第 9 章（测试与质量）与第 11 章（验收），提供可复现的命令、逐条 AC 追溯，以及本轮发现并修复的缺陷清单。未验证项在第 7 节明确列出，不做“全部达标”的过度声明。
@@ -13,8 +13,9 @@
 
 | 套件 | 用例数 | 通过 | 失败 | 运行时间 |
 | --- | --- | --- | --- | --- |
-| 单元 / 属性（`npm test`） | 41 | 41 | 0 | ≈ 0.4 s |
-| 端到端（`npm run test:e2e`） | 50 | 50 | 0 | ≈ 25 s（`LONG=1` 约 2 min） |
+| 单元 / 属性（`npm test`） | 51 | 51 | 0 | ≈ 0.5 s |
+| 端到端（`npm run test:e2e`） | 72 | 72 | 0 | ≈ 30 s（`LONG=1` 约 2 min） |
+| 长跑内存（`npm run test:memory`） | 10 次采样 / 5 min | 通过 | 0 | ≈ 6 min |
 | 生成器统计（`node tools/metrics.mjs 24`） | 24 种子 × 40 区块 | 全部不变量成立 | — | ≈ 1 s |
 
 端到端在 **Chromium 内核的真实浏览器**里跑：无 DOM 打桩，通过 CDP 驱动键盘、触摸、网络限速与设备模拟，并统计 `requestAnimationFrame` 帧率与 `renderer.draw()` 耗时。
@@ -30,10 +31,11 @@ Host            Windows 10 · Intel UHD + GTX 1650
 ```
 
 ```bash
-npm test                  # 41 条单元/属性测试
-npm run test:e2e          # 50 条浏览器端到端检查（需装 Chrome 或 Edge）
+npm test                  # 51 条单元/属性测试
+npm run test:e2e          # 72 条浏览器端到端检查（需装 Chrome 或 Edge）
 LONG=1 npm run test:e2e   # 性能项改用 SLO 定义的 30 s 采样窗口
 SOFTWARE=1 npm run test:e2e   # 无 GPU 的 CI：软件光栅，帧率阈值降至 24 fps
+npm run test:memory       # 5 分钟堆增长（PRD 8.1 内存 SLO）
 node tools/metrics.mjs 24     # 生成器统计（本报告第 3 节数字来源）
 npm run serve                 # http://127.0.0.1:8123 手动试玩
 ```
@@ -151,6 +153,18 @@ npm run serve                 # http://127.0.0.1:8123 手动试玩
 | 音效可关闭 | 可关闭且持久化 | `M` 键 / 面板按钮，localStorage 记忆 | 达标 |
 | 非颜色信息 | 生命同时用图形与数量表达 | 心形 + `aria-label="生命 N/3"` | 达标 |
 | 键盘可达 / 焦点可见 | 全流程键盘可完成 | 全部面板键盘可达，`:focus-visible` 描边 | 达标 |
+| 内存（5 分钟） | 堆增长 ≤30 MB | **+0.07 MB**（10 次采样，1.30 → 1.37 MB，峰值 +0.17 MB，chunk 窗口恒为 6，距离 158 → 1934 m） | 达标 |
+| 国际化（8.5） | 文案集中、默认 zh-CN、预留 en-US | 54 个键 × 2 语言，`src/i18n.js` 单点管理，`?lang=en` / 语言开关切换并持久化 | 达标（en-US 译文未经理工审校） |
+
+### 5.1 国际化实现（NFR 8.5）
+
+PRD 原文把“中英硬编码混排”列为已知差距。本轮把文案收进 `src/i18n.js`：
+
+- **单一来源**：54 个键 × `zh-CN` / `en-US` 两套文案；渲染逻辑与 `main.js` 里不再有用户可见的字面量。
+- **标记驱动**：HTML 用 `data-i18n` / `data-i18n-aria` 绑定，初始化与切换时由 `applyStatic()` 统一填充，`<title>` 与 `<html lang>` 同步更新。
+- **选择顺序**：`?lang=` → 上次选择（localStorage）→ `zh-CN` 默认值；`en`、`EN-us`、`zh-hans` 等短标签会被归一化。
+- **数字格式**：分数、距离用 `Intl.NumberFormat(locale)`，不是手拼字符串。
+- **测试**：7 条单测锁住键集合一致、占位符一致、标记引用无缺失、回退行为与标签归一化；12 条 E2E 覆盖默认语言、开关切换、刷新持久化、`?lang=` 覆盖，以及**英文界面下屏幕上不得出现任何中文**（语言开关自身的“中文”标记除外）。
 
 ## 6. 本轮发现并修复的缺陷
 
@@ -167,6 +181,8 @@ npm run serve                 # http://127.0.0.1:8123 手动试玩
 | 9 | P2 | 未支持 `prefers-reduced-motion` | 关闭雨、镜头抖动、粒子 | E2E `prefers-reduced-motion is detected` |
 | 10 | P3 | 每帧重复创建 6 个渐变对象 | 按尺寸/地面高度缓存，`clearRect` 去除（整屏天空已覆盖） | 帧率与 draw 耗时实测 |
 | 11 | P3 | 生命只靠颜色表达 | `aria-label="生命 N/3"`，且仅在变化时更新 | 代码审查 + E2E 无回归 |
+| 12 | P2 | 文案中英硬编码混排（PRD 8.5 明确标为技术债） | 新增 `src/i18n.js`，102 个键双语，标记 `data-i18n`，默认 zh-CN + EN 开关 + `?lang=` + 持久化 | 7 条 i18n 单测 + 12 条 E2E（含“英文界面不得残留中文”） |
+| 13 | P2 | 无 5 分钟内存数据（PRD 8.1） | 新增 `tests/memory.mjs` 长跑脚本 | 5 分钟 10 次采样，堆增长 +0.07 MB |
 
 ## 7. 未验证项与已知缺口
 
@@ -175,17 +191,19 @@ npm run serve                 # http://127.0.0.1:8123 手动试玩
 1. **真机未覆盖**：PRD 8.2 要求 Chrome/Edge/Firefox/Safari 16.4+/Android Chrome 必测。本次只覆盖 Chromium 内核（Edge headless）。Firefox 与 iOS Safari 未验证，`backdrop-filter`、`env(safe-area-inset-*)`、WebAudio 自动播放策略在真机上仍可能有差异。
 2. **性能 SLO 的“中端安卓”未实测**：60.0 fps 来自本机 GPU 的 headless 移动模拟，不等于中端安卓真机。无 GPU 的 CI 上软件光栅约 48 fps，因此 CI 阈值降为 24 fps 作为“不退化”护栏，真实 SLO 需真机复核。
 3. **线上地址未验收**：AC-F6-05 要求访问 GitHub Pages 返回 200。本次只验证本地静态服务器。仓库有 `origin` 远端，但未执行推送与部署。
-4. **埋点/KR 仍为空**：PRD 第 4 章的 KR1–KR4 需要 `session_start` / `run_end` 等事件。本轮未接入统计（PRD Q1 待决策），因此 KR 仍只能作为方向性目标，不能用于验收。
-5. **国际化未做**：PRD 8.5 明确当前实现是“中英文硬编码混排”，属 v2.1 技术债。本轮未引入 i18n 层，界面文案仍分散在 HTML 与 `main.js` 中。
+4. **埋点/KR 仍为空**：PRD 第 4 章的 KR1–KR4 需要 `session_start` / `run_end` 等事件。按 8.4 的隐私条款，本轮仍不加载任何第三方脚本，也未实现 8.6 的事件字典（PRD Q1 待决策），因此 KR 只能作为方向性目标，不能用于验收。
+5. **en-US 译文未经理工审校**：i18n 层已就位（键一致性、占位符一致、英文界面无残留中文均有测试），但英文措辞是开发期直译，未做母语润色。
 6. **难度曲线的高距离段**：压力在 600 m 饱和，此后难度不再上升。这是当前设计选择（附录 A），但对极长局玩家可能显得平坦；需按上线后的死亡分布校准（PRD F4 风险项）。
+7. **长跑脚本的自动化程度**：`tests/memory.mjs` 用“卡住就跳、再卡就轻推”的机器人维持五分钟对局，属于测试脚手架而非玩法验证；它保证测量发生在真实对局中，但不代表机器人能通关。
 
 ## 8. 复现
 
 ```bash
 git clone <repo> && cd skyline-runner
-npm test                 # 41/41
-npm run test:e2e         # 50/50，截图落在 tests/artifacts/
+npm test                 # 51/51
+npm run test:e2e         # 72/72，截图落在 tests/artifacts/
 LONG=1 npm run test:e2e  # 性能项用 30 s 窗口复测
+npm run test:memory      # 5 分钟堆增长
 node tools/metrics.mjs 24
 ```
 
